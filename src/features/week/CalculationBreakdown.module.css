@@ -1,0 +1,55 @@
+.sum {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 16px;
+  margin: 0 0 20px;
+}
+
+.sum dt,
+.sum dd {
+  margin: 0;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.sum dd {
+  text-align: right;
+}
+
+/* Fixed-width operator column so the labels line up like a written sum. */
+.op {
+  display: inline-block;
+  width: 1.1em;
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+
+.total {
+  border-top: 2px solid var(--ink);
+  border-bottom: none !important;
+  font-weight: 650;
+}
+
+.detail {
+  padding-top: 0 !important;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+}
+
+.protected {
+  color: var(--teal);
+}
+
+.available {
+  color: var(--cobalt);
+}
+
+.overspent {
+  color: var(--red);
+}
+
+.footnote {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+}

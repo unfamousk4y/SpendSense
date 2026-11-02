@@ -1,0 +1,14 @@
+.money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The code is smaller than the digits so the number stays dominant. */
+.code {
+  margin-right: 0.2em;
+  font-size: 0.62em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  vertical-align: 0.15em;
+  opacity: 0.75;
+}

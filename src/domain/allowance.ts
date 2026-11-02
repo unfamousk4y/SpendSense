@@ -15,6 +15,22 @@ export type AllowanceSuggestion =
   | { kind: 'ok'; suggestedCents: number; shortfallCents: number }
   | { kind: 'planExpired' };
 
+/**
+ * F = C - P - B. Protected savings and unpaid commitments are parts of the cash
+ * already counted in C, not extra money, so both are subtracted.
+ */
+export function freeCashCents({
+  currentCashCents,
+  protectedCents,
+  commitmentsCents,
+}: {
+  currentCashCents: number;
+  protectedCents: number;
+  commitmentsCents: number;
+}): number {
+  return currentCashCents - protectedCents - commitmentsCents;
+}
+
 export function suggestAllowance({
   freeCents,
   daysThisWeek,

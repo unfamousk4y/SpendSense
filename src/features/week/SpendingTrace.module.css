@@ -1,0 +1,79 @@
+.trace {
+  margin: 0;
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: 120px;
+  border-bottom: 1px solid var(--ink);
+}
+
+/* non-scaling-stroke keeps lines crisp although the chart stretches. */
+.gridline {
+  stroke: var(--rule);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.pace {
+  fill: none;
+  stroke: var(--ink-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.actual {
+  fill: none;
+  stroke: var(--cobalt);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  text-align: right;
+}
+
+.today {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.caption {
+  margin-top: 10px;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+/* Legend marks repeat the line styles so the caption doubles as a key. */
+.legendActual,
+.legendPace {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.legendActual::before,
+.legendPace::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.legendActual::before {
+  border-top: 3px solid var(--cobalt);
+}
+
+.legendPace::before {
+  border-top: 2px dashed var(--ink-muted);
+}

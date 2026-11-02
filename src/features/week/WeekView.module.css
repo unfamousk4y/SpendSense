@@ -1,0 +1,237 @@
+/* Phone first. Bottom padding leaves room for the fixed Add spending bar. */
+.page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 12px 16px 104px;
+}
+
+.demoBanner {
+  margin: 0 0 14px;
+  padding: 6px 10px;
+  border: 1px dashed var(--amber-ink);
+  border-radius: var(--radius);
+  background: var(--amber-soft);
+  color: var(--amber-ink);
+  font-size: 0.8125rem;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.currencySwitch {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.currencyOption {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 4px;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+}
+
+.currencyOption[aria-current='page'] {
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.weekDates {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.layout {
+  display: grid;
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.primary {
+  min-width: 0;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.remaining {
+  margin: 2px 0 0;
+  color: var(--cobalt);
+  font-size: clamp(2.75rem, 13vw, 4rem);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.overspent {
+  color: var(--red);
+}
+
+.subline {
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+  font-size: 0.9375rem;
+}
+
+.note {
+  margin: 12px 0 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--rule);
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+/* Fixed at the bottom on phones so the primary action stays within thumb reach. */
+.actionBar {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  z-index: 1;
+}
+
+.addButton {
+  width: 100%;
+  min-height: 52px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--cobalt);
+  box-shadow: 0 6px 18px rgb(29 78 216 / 0.28);
+  color: #fff;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.addButton:hover {
+  background: var(--cobalt-strong);
+}
+
+.section {
+  margin-top: 28px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+
+.sectionTitle {
+  margin: 0 0 10px;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.currencyTag {
+  margin-left: 6px;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
+.activity {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.activityRow {
+  display: grid;
+  grid-template-columns: 2.75rem 1fr auto;
+  gap: 12px;
+  align-items: baseline;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.activityDay {
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+}
+
+.merchant {
+  overflow-wrap: anywhere;
+}
+
+.amount {
+  text-align: right;
+}
+
+.empty {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.breakdownPhone[open] .summary {
+  margin-bottom: 8px;
+}
+
+.breakdownDesktop {
+  display: none;
+}
+
+/* Desktop: the calculation gets its own column instead of hiding behind a tap. */
+@media (min-width: 900px) {
+  .page {
+    padding: 24px 32px 48px;
+  }
+
+  .layout {
+    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr);
+    gap: 56px;
+    align-items: start;
+  }
+
+  .actionBar {
+    position: static;
+    max-width: 280px;
+    margin-top: 20px;
+  }
+
+  .addButton {
+    box-shadow: none;
+  }
+
+  .breakdownPhone {
+    display: none;
+  }
+
+  .breakdownDesktop {
+    position: sticky;
+    top: 24px;
+    display: block;
+    padding: 20px 24px;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+}

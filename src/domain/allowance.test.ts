@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { suggestAllowance } from './allowance';
+import { freeCashCents, suggestAllowance } from './allowance';
 
 // Expected values were worked out by hand from PRODUCT_PLAN.md before the code was written.
 describe('suggestAllowance', () => {
@@ -76,5 +76,15 @@ describe('suggestAllowance', () => {
     expect(() => suggestAllowance({ freeCents: 60000, daysThisWeek: 0, daysLeft: 28 })).toThrow(RangeError);
     expect(() => suggestAllowance({ freeCents: 60000, daysThisWeek: 7, daysLeft: 3 })).toThrow(RangeError);
     expect(() => suggestAllowance({ freeCents: Number.NaN, daysThisWeek: 7, daysLeft: 28 })).toThrow(RangeError);
+  });
+});
+
+describe('freeCashCents', () => {
+  test('worked example after spending $40: 960 - 200 - 200 = 560', () => {
+    expect(freeCashCents({ currentCashCents: 96000, protectedCents: 20000, commitmentsCents: 20000 })).toBe(56000);
+  });
+
+  test('can be negative when savings and bills exceed cash', () => {
+    expect(freeCashCents({ currentCashCents: 10000, protectedCents: 5000, commitmentsCents: 8000 })).toBe(-3000);
   });
 });

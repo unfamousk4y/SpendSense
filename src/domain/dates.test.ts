@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { localDateIn, planDays } from './dates';
+import { addDays, daysBetween, localDateIn, planDays } from './dates';
 import { suggestAllowance } from './allowance';
 
 // Expected values were worked out by hand on a calendar. 2026-11-02 is a Monday.
@@ -81,5 +81,20 @@ describe('localDateIn', () => {
 
   test('rejects an unknown time zone name', () => {
     expect(() => localDateIn(lateEveningInNassau, 'Mars/Olympus')).toThrow(RangeError);
+  });
+});
+
+describe('daysBetween and addDays', () => {
+  test('counts calendar days in either direction', () => {
+    expect(daysBetween('2026-11-02', '2026-11-05')).toBe(3);
+    expect(daysBetween('2026-11-05', '2026-11-02')).toBe(-3);
+    expect(daysBetween('2026-11-02', '2026-11-02')).toBe(0);
+  });
+
+  test('adds days across a week end, a leap day and a new year', () => {
+    expect(addDays('2026-11-02', 6)).toBe('2026-11-08');
+    expect(addDays('2028-02-28', 1)).toBe('2028-02-29');
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01');
+    expect(addDays('2026-11-02', -1)).toBe('2026-11-01');
   });
 });

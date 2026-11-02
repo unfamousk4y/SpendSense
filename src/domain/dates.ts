@@ -50,6 +50,16 @@ export function planDays(today: IsoDate, endDate: IsoDate): PlanDays {
   return { daysThisWeek: Math.min(daysThroughSunday, daysLeft), daysLeft };
 }
 
+/** Whole calendar days from `from` to `to`; negative when `to` is earlier. */
+export function daysBetween(from: IsoDate, to: IsoDate): number {
+  return dayNumber(to) - dayNumber(from);
+}
+
+/** The calendar date `days` after `date` (or before, when negative). */
+export function addDays(date: IsoDate, days: number): IsoDate {
+  return new Date((dayNumber(date) + days) * MS_PER_DAY).toISOString().slice(0, 10);
+}
+
 /** Whole days since 1970-01-01 for a valid ISO date; throws on anything else. */
 function dayNumber(date: IsoDate): number {
   const match = ISO_DATE.exec(date);
