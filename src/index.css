@@ -1,4 +1,5 @@
-/* Shared design tokens: a precise instrument on a warm off-white canvas.
+/* Shared design tokens: a precise instrument with a violet accent. Light mode
+   sits on a warm off-white canvas; dark mode on purple-tinted black and greys.
    Color always carries meaning, and every meaning also has a text label. */
 :root {
   --canvas: #f6f3ec;
@@ -6,16 +7,41 @@
   --ink: #1d2126;
   --ink-muted: #565c66;
   --rule: #d9d2c4;
-  --cobalt: #1d4ed8; /* money available to spend */
-  --cobalt-strong: #1a43b8;
+  --accent: #6d28d9; /* money available to spend this week */
+  --accent-strong: #5b21b6;
+  --on-accent: #ffffff;
+  --accent-soft: #c4b5fd; /* free cash for later weeks */
+  --neutral-part: #8b8794; /* cash reserved for bills */
   --teal: #2b7a70; /* protected savings */
   --amber-ink: #8a4b00; /* notices and demo labels */
   --amber-soft: #fbefd9;
-  --red: #b42318; /* overspending */
+  --red: #b42318; /* overspending and shortfalls */
+  --shadow: rgb(45 20 90 / 0.25);
   --radius: 6px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 
-  color-scheme: light;
+  color-scheme: light dark;
+}
+
+/* Follows the phone or computer's own light/dark setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #0e0d12;
+    --surface: #18161f;
+    --ink: #ece9f3;
+    --ink-muted: #a7a2b4;
+    --rule: #2f2c38;
+    --accent: #b39dfa;
+    --accent-strong: #c9b8ff;
+    --on-accent: #16121f;
+    --accent-soft: #5b4a99;
+    --neutral-part: #6c6878;
+    --teal: #5cc1b2;
+    --amber-ink: #f2b766;
+    --amber-soft: #2a2113;
+    --red: #f47a6f;
+    --shadow: rgb(0 0 0 / 0.5);
+  }
 }
 
 *,
@@ -34,7 +60,7 @@ body {
 }
 
 :focus-visible {
-  outline: 3px solid var(--cobalt);
+  outline: 3px solid var(--accent);
   outline-offset: 2px;
 }
 

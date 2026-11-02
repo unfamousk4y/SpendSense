@@ -1,3 +1,4 @@
+import { allocateCash } from '../../domain/allocation';
 import { freeCashCents } from '../../domain/allowance';
 import { addDays, daysBetween, type IsoDate } from '../../domain/dates';
 import type { Currency } from '../../domain/money';
@@ -5,6 +6,7 @@ import { summarizeWeek } from '../../domain/week';
 import type { DemoAccount } from '../../fixtures/demoWeek';
 import { Money } from '../../ui/Money';
 import { CalculationBreakdown } from './CalculationBreakdown';
+import { CashAllocationChart } from './CashAllocationChart';
 import { SpendingTrace } from './SpendingTrace';
 import styles from './WeekView.module.css';
 
@@ -32,6 +34,13 @@ export function WeekView({ account, weekStart, today }: WeekViewProps) {
   );
   const overspent = summary.remainingCents < 0;
   const newestFirst = [...account.purchases].sort((a, b) => b.date.localeCompare(a.date));
+
+  const allocation = (
+    <CashAllocationChart
+      currency={currency}
+      allocation={allocateCash({ ...account, weekRemainingCents: summary.remainingCents })}
+    />
+  );
 
   const breakdown = (
     <CalculationBreakdown
@@ -102,6 +111,13 @@ export function WeekView({ account, weekStart, today }: WeekViewProps) {
             </div>
           </section>
 
+          <section className={`${styles.section} ${styles.phoneOnly}`} aria-labelledby="cash-heading-phone">
+            <h2 id="cash-heading-phone" className={styles.sectionTitle}>
+              Where your {currency} cash is
+            </h2>
+            {allocation}
+          </section>
+
           <section className={styles.section} aria-labelledby="trace-heading">
             <h2 id="trace-heading" className={styles.sectionTitle}>
               Spending this week
@@ -138,17 +154,26 @@ export function WeekView({ account, weekStart, today }: WeekViewProps) {
             )}
           </section>
 
-          <details className={`${styles.section} ${styles.breakdownPhone}`}>
+          <details className={`${styles.section} ${styles.phoneOnly}`}>
             <summary className={styles.summary}>How this is calculated</summary>
             {breakdown}
           </details>
         </div>
 
-        <aside className={styles.breakdownDesktop} aria-labelledby="calc-heading">
-          <h2 id="calc-heading" className={styles.sectionTitle}>
-            How this is calculated <span className={styles.currencyTag}>{currency}</span>
-          </h2>
-          {breakdown}
+        {/* Desktop shows these side by side instead of below; phones hide this column. */}
+        <aside className={styles.sideColumn}>
+          <section className={styles.card} aria-labelledby="cash-heading">
+            <h2 id="cash-heading" className={styles.sectionTitle}>
+              Where your {currency} cash is
+            </h2>
+            {allocation}
+          </section>
+          <section className={styles.card} aria-labelledby="calc-heading">
+            <h2 id="calc-heading" className={styles.sectionTitle}>
+              How this is calculated <span className={styles.currencyTag}>{currency}</span>
+            </h2>
+            {breakdown}
+          </section>
         </aside>
       </main>
     </div>

@@ -78,7 +78,7 @@
 
 .remaining {
   margin: 2px 0 0;
-  color: var(--cobalt);
+  color: var(--accent);
   font-size: clamp(2.75rem, 13vw, 4rem);
   font-weight: 650;
   letter-spacing: -0.02em;
@@ -117,9 +117,9 @@
   min-height: 52px;
   border: 0;
   border-radius: var(--radius);
-  background: var(--cobalt);
-  box-shadow: 0 6px 18px rgb(29 78 216 / 0.28);
-  color: #fff;
+  background: var(--accent);
+  box-shadow: 0 6px 18px var(--shadow);
+  color: var(--on-accent);
   font: inherit;
   font-size: 1rem;
   font-weight: 650;
@@ -128,7 +128,7 @@
 }
 
 .addButton:hover {
-  background: var(--cobalt-strong);
+  background: var(--accent-strong);
 }
 
 .section {
@@ -191,22 +191,23 @@
   cursor: pointer;
 }
 
-.breakdownPhone[open] .summary {
+details[open] > .summary {
   margin-bottom: 8px;
 }
 
-.breakdownDesktop {
+.sideColumn {
   display: none;
 }
 
-/* Desktop: the calculation gets its own column instead of hiding behind a tap. */
+/* Desktop: the cash chart and calculation get their own column instead of
+   sitting below the activity or hiding behind a tap. */
 @media (min-width: 900px) {
   .page {
     padding: 24px 32px 48px;
   }
 
   .layout {
-    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr);
+    grid-template-columns: minmax(0, 1.35fr) minmax(340px, 1fr);
     gap: 56px;
     align-items: start;
   }
@@ -221,14 +222,18 @@
     box-shadow: none;
   }
 
-  .breakdownPhone {
+  .phoneOnly {
     display: none;
   }
 
-  .breakdownDesktop {
-    position: sticky;
-    top: 24px;
-    display: block;
+  /* Not sticky: with the chart and calculation stacked it is taller than a
+     laptop screen, and a sticky column that tall would hide its own bottom. */
+  .sideColumn {
+    display: grid;
+    gap: 20px;
+  }
+
+  .card {
     padding: 20px 24px;
     border: 1px solid var(--rule);
     border-radius: var(--radius);

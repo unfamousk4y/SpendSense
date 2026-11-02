@@ -41,7 +41,7 @@
 }
 
 .available {
-  color: var(--cobalt);
+  color: var(--accent);
 }
 
 .overspent {

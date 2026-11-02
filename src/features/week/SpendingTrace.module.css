@@ -26,7 +26,7 @@
 
 .actual {
   fill: none;
-  stroke: var(--cobalt);
+  stroke: var(--accent);
   stroke-width: 3;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
@@ -71,7 +71,7 @@
 }
 
 .legendActual::before {
-  border-top: 3px solid var(--cobalt);
+  border-top: 3px solid var(--accent);
 }
 
 .legendPace::before {
