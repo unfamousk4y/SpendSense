@@ -20,12 +20,17 @@
   --radius: 6px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
-/* Follows the phone or computer's own light/dark setting. */
+/* Dark colors apply in two cases, so the same values appear twice (plain CSS
+   cannot share one block between a media query and an attribute selector):
+   1. Auto: no data-theme attribute, and the device is set to dark.
+   2. Dark chosen in the Appearance switch: <html data-theme="dark">.
+   Keep both blocks identical. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
     --canvas: #0e0d12;
     --surface: #18161f;
     --ink: #ece9f3;
@@ -42,6 +47,25 @@
     --red: #f47a6f;
     --shadow: rgb(0 0 0 / 0.5);
   }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --canvas: #0e0d12;
+  --surface: #18161f;
+  --ink: #ece9f3;
+  --ink-muted: #a7a2b4;
+  --rule: #2f2c38;
+  --accent: #b39dfa;
+  --accent-strong: #c9b8ff;
+  --on-accent: #16121f;
+  --accent-soft: #5b4a99;
+  --neutral-part: #6c6878;
+  --teal: #5cc1b2;
+  --amber-ink: #f2b766;
+  --amber-soft: #2a2113;
+  --red: #f47a6f;
+  --shadow: rgb(0 0 0 / 0.5);
 }
 
 *,

@@ -5,6 +5,7 @@ import type { Currency } from '../../domain/money';
 import { summarizeWeek } from '../../domain/week';
 import type { DemoAccount } from '../../fixtures/demoWeek';
 import { Money } from '../../ui/Money';
+import { ThemeSwitch } from '../../ui/ThemeSwitch';
 import { CalculationBreakdown } from './CalculationBreakdown';
 import { CashAllocationChart } from './CashAllocationChart';
 import { SpendingTrace } from './SpendingTrace';
@@ -31,6 +32,9 @@ export function WeekView({ account, weekStart, today }: WeekViewProps) {
   const weekEnd = addDays(weekStart, 6);
   const dayLabels = Array.from({ length: 7 }, (_, day) =>
     label(addDays(weekStart, day), { weekday: 'short' }),
+  );
+  const dayTitles = Array.from({ length: 7 }, (_, day) =>
+    label(addDays(weekStart, day), { weekday: 'short', month: 'short', day: 'numeric' }),
   );
   const overspent = summary.remainingCents < 0;
   const newestFirst = [...account.purchases].sort((a, b) => b.date.localeCompare(a.date));
@@ -60,8 +64,8 @@ export function WeekView({ account, weekStart, today }: WeekViewProps) {
   return (
     <div className={styles.page}>
       <p className={styles.demoBanner}>
-        <strong>Demo data</strong> — fictional numbers. Nothing is saved, and Add spending is not
-        connected yet.
+        <strong>Demo data.</strong> These numbers are fictional. Nothing is saved, and Add spending
+        is not connected yet.
       </p>
 
       <header className={styles.header}>
@@ -80,7 +84,7 @@ export function WeekView({ account, weekStart, today }: WeekViewProps) {
         </nav>
         <p className={styles.weekDates}>
           <time dateTime={weekStart}>{label(weekStart, { weekday: 'short', month: 'short', day: 'numeric' })}</time>
-          {' – '}
+          {' to '}
           <time dateTime={weekEnd}>{label(weekEnd, { weekday: 'short', month: 'short', day: 'numeric' })}</time>
         </p>
       </header>
@@ -124,6 +128,9 @@ export function WeekView({ account, weekStart, today }: WeekViewProps) {
             </h2>
             <SpendingTrace
               currency={currency}
+              weekStart={weekStart}
+              purchases={account.purchases}
+              dayTitles={dayTitles}
               cumulativeCents={summary.cumulativeCents}
               evenPaceCents={summary.evenPaceCents}
               todayIndex={todayIndex}
@@ -144,7 +151,10 @@ export function WeekView({ account, weekStart, today }: WeekViewProps) {
                     <time className={styles.activityDay} dateTime={purchase.date}>
                       {label(purchase.date, { weekday: 'short' })}
                     </time>
-                    <span className={styles.merchant}>{purchase.merchant}</span>
+                    <span className={styles.merchant}>
+                      {purchase.merchant}
+                      {purchase.note && <span className={styles.purchaseNote}>{purchase.note}</span>}
+                    </span>
                     <span className={styles.amount}>
                       <Money cents={purchase.cents} currency={currency} />
                     </span>
@@ -176,6 +186,10 @@ export function WeekView({ account, weekStart, today }: WeekViewProps) {
           </section>
         </aside>
       </main>
+
+      <footer className={styles.footer}>
+        <ThemeSwitch />
+      </footer>
     </div>
   );
 }

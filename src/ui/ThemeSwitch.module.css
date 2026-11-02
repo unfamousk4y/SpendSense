@@ -1,0 +1,39 @@
+.switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.label {
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.options {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.option {
+  min-width: 64px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.option[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--surface);
+}

@@ -32,20 +32,97 @@
   vector-effect: non-scaling-stroke;
 }
 
+/* The column behind the day being shown. */
+.highlight {
+  fill: var(--accent);
+  opacity: 0.12;
+}
+
+/* One button per day column, aligned under its slice of the chart. */
 .days {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  margin: 4px 0 0;
+  margin-top: 4px;
+}
+
+.day {
+  min-height: 44px;
   padding: 0;
-  list-style: none;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
   color: var(--ink-muted);
+  font: inherit;
   font-size: 0.75rem;
-  text-align: right;
+  cursor: pointer;
+}
+
+.day:hover {
+  color: var(--ink);
+}
+
+.day[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
 }
 
 .today {
   color: var(--ink);
   font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.details {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.detailsHeading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  font-weight: 650;
+}
+
+.todayTag {
+  margin-left: 8px;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.detailsList {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.detailsRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0 0;
+  font-size: 0.9375rem;
+}
+
+.detailsNote {
+  display: block;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+}
+
+.detailsEmpty {
+  margin: 4px 0 0;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
 }
 
 .caption {

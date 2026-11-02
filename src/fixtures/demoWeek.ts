@@ -36,7 +36,7 @@ export const demoAccounts: Record<Currency, DemoAccount> = {
     chosenAllowanceCents: 15000,
     purchases: [
       { id: 'usd-1', date: '2026-11-03', merchant: 'Campus café', cents: 450 },
-      { id: 'usd-2', date: '2026-11-04', merchant: 'Bookstore — used statistics textbook', cents: 2800 },
+      { id: 'usd-2', date: '2026-11-04', merchant: 'Bookstore', note: 'Used statistics textbook', cents: 2800 },
       { id: 'usd-3', date: '2026-11-05', merchant: 'Bus pass top-up', cents: 750 },
     ],
   },

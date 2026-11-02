@@ -1,10 +1,13 @@
-// Pure summary of one Monday–Sunday week for one currency account.
+// Pure summary of one Monday to Sunday week for one currency account.
 import { daysBetween, type IsoDate } from './dates';
 
 export type Purchase = {
   id: string;
   date: IsoDate;
+  /** Where the money went, kept short: "Bookstore". */
   merchant: string;
+  /** Optional detail shown on its own line: "Used statistics textbook". */
+  note?: string;
   cents: number;
 };
 

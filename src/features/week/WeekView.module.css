@@ -174,6 +174,14 @@
   overflow-wrap: anywhere;
 }
 
+/* The note sits under the merchant instead of being joined to it with punctuation. */
+.purchaseNote {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+}
+
 .amount {
   text-align: right;
 }
@@ -189,6 +197,12 @@
   min-height: 44px;
   font-weight: 650;
   cursor: pointer;
+}
+
+.footer {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
 }
 
 details[open] > .summary {
