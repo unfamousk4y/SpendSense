@@ -38,15 +38,18 @@
   min-width: 60px;
   min-height: 44px;
   padding: 0 14px;
+  border: 0;
   border-radius: 4px;
+  background: transparent;
   color: var(--ink-muted);
+  font: inherit;
   font-size: 0.875rem;
   font-weight: 650;
   letter-spacing: 0.06em;
-  text-decoration: none;
+  cursor: pointer;
 }
 
-.currencyOption[aria-current='page'] {
+.currencyOption[aria-pressed='true'] {
   background: var(--ink);
   color: var(--surface);
 }
@@ -172,6 +175,23 @@
 
 .merchant {
   overflow-wrap: anywhere;
+}
+
+.purchaseTags {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
+/* Reserves its line so the layout does not jump when a save is confirmed. */
+.savedStatus {
+  min-height: 1.45em;
+  margin: 10px 0 0;
+  color: var(--teal);
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
 /* The note sits under the merchant instead of being joined to it with punctuation. */

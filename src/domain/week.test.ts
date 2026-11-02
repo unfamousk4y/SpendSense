@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { summarizeWeek, type Purchase } from './week';
+import { addPurchaseOnce, summarizeWeek, type Purchase } from './week';
 
 const workedExamplePurchases: Purchase[] = [
   { id: 'a', date: '2026-11-03', merchant: 'Campus café', cents: 450 },
@@ -35,5 +35,23 @@ describe('summarizeWeek', () => {
   test('rejects a purchase dated outside the week', () => {
     const lateEntry: Purchase = { id: 'x', date: '2026-11-09', merchant: 'Next Monday', cents: 100 };
     expect(() => summarizeWeek('2026-11-02', 15000, [lateEntry])).toThrow(RangeError);
+  });
+});
+
+describe('addPurchaseOnce', () => {
+  const lunch: Purchase = { id: 'entry-1', date: '2026-11-05', merchant: 'Fish fry', cents: 1200 };
+
+  test('adds a new purchase without changing the original list', () => {
+    const before = [...workedExamplePurchases];
+    const after = addPurchaseOnce(before, lunch);
+    expect(after).toHaveLength(4);
+    expect(before).toHaveLength(3);
+  });
+
+  test('a second save with the same id (double tap or retry) changes nothing', () => {
+    const once = addPurchaseOnce(workedExamplePurchases, lunch);
+    const twice = addPurchaseOnce(once, { ...lunch });
+    expect(twice).toBe(once);
+    expect(summarizeWeek('2026-11-02', 15000, twice).spentCents).toBe(5200);
   });
 });

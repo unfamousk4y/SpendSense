@@ -1,11 +1,14 @@
+import { useState } from 'react';
 import { allocateCash } from '../../domain/allocation';
 import { freeCashCents } from '../../domain/allowance';
+import { categoryLabel, purchaseTitle } from '../../domain/categories';
 import { addDays, daysBetween, type IsoDate } from '../../domain/dates';
 import type { Currency } from '../../domain/money';
-import { summarizeWeek } from '../../domain/week';
+import { summarizeWeek, type Purchase } from '../../domain/week';
 import type { DemoAccount } from '../../fixtures/demoWeek';
 import { Money } from '../../ui/Money';
 import { ThemeSwitch } from '../../ui/ThemeSwitch';
+import { AddSpendingDialog } from './AddSpendingDialog';
 import { CalculationBreakdown } from './CalculationBreakdown';
 import { CashAllocationChart } from './CashAllocationChart';
 import { SpendingTrace } from './SpendingTrace';
@@ -15,6 +18,8 @@ type WeekViewProps = {
   account: DemoAccount;
   weekStart: IsoDate;
   today: IsoDate;
+  onCurrencyChange: (currency: Currency) => void;
+  onAddPurchase: (purchase: Purchase) => void;
 };
 
 const CURRENCIES: Currency[] = ['USD', 'BSD'];
@@ -24,10 +29,20 @@ const CURRENCIES: Currency[] = ['USD', 'BSD'];
 const label = (date: IsoDate, options: Intl.DateTimeFormatOptions) =>
   new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', { ...options, timeZone: 'UTC' });
 
-export function WeekView({ account, weekStart, today }: WeekViewProps) {
+export function WeekView({ account, weekStart, today, onCurrencyChange, onAddPurchase }: WeekViewProps) {
+  const [isAdding, setIsAdding] = useState(false);
+  // The last purchase saved, for the confirmation line. Cleared when switching account.
+  const [lastSaved, setLastSaved] = useState<Purchase | null>(null);
+
   const { currency } = account;
   const summary = summarizeWeek(weekStart, account.chosenAllowanceCents, account.purchases);
-  const freeCash = freeCashCents(account);
+  // Derived, never stored: cash on Monday minus everything spent since.
+  const currentCashCents = account.weekStartCashCents - summary.spentCents;
+  const cashParts = {
+    currentCashCents,
+    protectedCents: account.protectedCents,
+    commitmentsCents: account.commitmentsCents,
+  };
   const todayIndex = daysBetween(weekStart, today);
   const weekEnd = addDays(weekStart, 6);
   const dayLabels = Array.from({ length: 7 }, (_, day) =>
@@ -36,23 +51,39 @@ export function WeekView({ account, weekStart, today }: WeekViewProps) {
   const dayTitles = Array.from({ length: 7 }, (_, day) =>
     label(addDays(weekStart, day), { weekday: 'short', month: 'short', day: 'numeric' }),
   );
+  // The entry form offers Monday through today, never a future or closed day.
+  const entryDates = Array.from({ length: todayIndex + 1 }, (_, day) => ({
+    date: addDays(weekStart, day),
+    label: dayTitles[day],
+  })).reverse();
   const overspent = summary.remainingCents < 0;
-  const newestFirst = [...account.purchases].sort((a, b) => b.date.localeCompare(a.date));
+  // Reverse first so that, within one day, the most recently added comes first
+  // (sort keeps the existing order of equal dates).
+  const newestFirst = [...account.purchases].reverse().sort((a, b) => b.date.localeCompare(a.date));
+
+  function handleSave(purchase: Purchase) {
+    onAddPurchase(purchase);
+    setLastSaved(purchase);
+    setIsAdding(false);
+  }
+
+  function handleCurrencyChange(next: Currency) {
+    setLastSaved(null);
+    onCurrencyChange(next);
+  }
 
   const allocation = (
     <CashAllocationChart
       currency={currency}
-      allocation={allocateCash({ ...account, weekRemainingCents: summary.remainingCents })}
+      allocation={allocateCash({ ...cashParts, weekRemainingCents: summary.remainingCents })}
     />
   );
 
   const breakdown = (
     <CalculationBreakdown
       currency={currency}
-      currentCashCents={account.currentCashCents}
-      protectedCents={account.protectedCents}
-      commitmentsCents={account.commitmentsCents}
-      freeCashCents={freeCash}
+      {...cashParts}
+      freeCashCents={freeCashCents(cashParts)}
       planEndLabel={label(account.planEndDate, { month: 'short', day: 'numeric' })}
       recommendedAllowanceCents={account.recommendedAllowanceCents}
       chosenAllowanceCents={account.chosenAllowanceCents}
@@ -64,24 +95,24 @@ export function WeekView({ account, weekStart, today }: WeekViewProps) {
   return (
     <div className={styles.page}>
       <p className={styles.demoBanner}>
-        <strong>Demo data.</strong> These numbers are fictional. Nothing is saved, and Add spending
-        is not connected yet.
+        <strong>Demo data.</strong> These numbers are fictional. Purchases you add are kept only
+        until you close or reload this tab.
       </p>
 
       <header className={styles.header}>
-        {/* Links for now: switching reloads the page with ?currency=…; React state replaces this next. */}
-        <nav className={styles.currencySwitch} aria-label="Account currency">
+        <div className={styles.currencySwitch} role="group" aria-label="Account currency">
           {CURRENCIES.map((option) => (
-            <a
+            <button
               key={option}
-              href={`?currency=${option}`}
+              type="button"
               className={styles.currencyOption}
-              aria-current={option === currency ? 'page' : undefined}
+              aria-pressed={option === currency}
+              onClick={() => handleCurrencyChange(option)}
             >
               {option}
-            </a>
+            </button>
           ))}
-        </nav>
+        </div>
         <p className={styles.weekDates}>
           <time dateTime={weekStart}>{label(weekStart, { weekday: 'short', month: 'short', day: 'numeric' })}</time>
           {' to '}
@@ -108,8 +139,16 @@ export function WeekView({ account, weekStart, today }: WeekViewProps) {
                 suggestion was <Money cents={account.recommendedAllowanceCents} currency={currency} />.
               </p>
             )}
+            {/* role="status" makes screen readers announce the change without moving focus. */}
+            <p className={styles.savedStatus} role="status">
+              {lastSaved && (
+                <>
+                  Saved <Money cents={lastSaved.cents} currency={currency} /> · {purchaseTitle(lastSaved)}
+                </>
+              )}
+            </p>
             <div className={styles.actionBar}>
-              <button type="button" className={styles.addButton}>
+              <button type="button" className={styles.addButton} onClick={() => setIsAdding(true)}>
                 + Add spending
               </button>
             </div>
@@ -152,8 +191,18 @@ export function WeekView({ account, weekStart, today }: WeekViewProps) {
                       {label(purchase.date, { weekday: 'short' })}
                     </time>
                     <span className={styles.merchant}>
-                      {purchase.merchant}
+                      {purchaseTitle(purchase)}
                       {purchase.note && <span className={styles.purchaseNote}>{purchase.note}</span>}
+                      {(purchase.category || purchase.needOrWant) && (
+                        <span className={styles.purchaseTags}>
+                          {[
+                            purchase.category && categoryLabel(purchase.category),
+                            purchase.needOrWant && (purchase.needOrWant === 'need' ? 'Need' : 'Want'),
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </span>
+                      )}
                     </span>
                     <span className={styles.amount}>
                       <Money cents={purchase.cents} currency={currency} />
@@ -190,6 +239,16 @@ export function WeekView({ account, weekStart, today }: WeekViewProps) {
       <footer className={styles.footer}>
         <ThemeSwitch />
       </footer>
+
+      {/* Mounted only while open, so every opening starts with an empty form and a new id. */}
+      {isAdding && (
+        <AddSpendingDialog
+          currency={currency}
+          dates={entryDates}
+          onSave={handleSave}
+          onClose={() => setIsAdding(false)}
+        />
+      )}
     </div>
   );
 }

@@ -1,0 +1,218 @@
+/* Phone: a bottom sheet within thumb reach. Desktop: a centered panel. */
+.dialog {
+  width: 100%;
+  max-width: 100%;
+  max-height: 92vh;
+  margin: auto 0 0;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 14px 14px 0 0;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 -12px 40px var(--shadow);
+}
+
+.dialog::backdrop {
+  background: rgb(10 8 16 / 0.55);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dialog[open] {
+    animation: rise 200ms ease-out;
+  }
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+  padding: 16px 16px 20px;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.close {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.field,
+.group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.label {
+  padding: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.optional {
+  margin-left: 4px;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.amountBox {
+  display: flex;
+  align-items: center;
+  border: 2px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--canvas);
+}
+
+.amountBox:focus-within {
+  border-color: var(--accent);
+}
+
+.invalid {
+  border-color: var(--red);
+}
+
+.prefix {
+  padding: 0 4px 0 12px;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
+/* 16px or larger keeps iPhones from zooming the page when the box is tapped. */
+.amountInput {
+  /* width: 0 + flex: 1 overrides the input's built-in ~20-character width,
+     which otherwise made the form wider than a phone screen. */
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  min-height: 52px;
+  padding: 0 12px 0 4px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.error {
+  color: var(--red);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip,
+.segment {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.chip[aria-pressed='true'],
+.segment[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 650;
+}
+
+.segmented {
+  display: flex;
+  gap: 8px;
+}
+
+.segment {
+  flex: 1;
+  border-radius: var(--radius);
+}
+
+.textInput {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--canvas);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.textInput:focus {
+  border-color: var(--accent);
+}
+
+/* Pinned to the bottom of the sheet so it stays reachable on short phones
+   without scrolling past the optional fields. */
+.save {
+  position: sticky;
+  bottom: 12px;
+  box-shadow: 0 0 0 12px var(--surface);
+  min-height: 52px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--on-accent);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.save:hover {
+  background: var(--accent-strong);
+}
+
+@media (min-width: 900px) {
+  .dialog {
+    width: 480px;
+    margin: auto;
+    border-radius: 12px;
+    box-shadow: 0 24px 60px var(--shadow);
+  }
+
+  .form {
+    padding: 20px 24px 24px;
+  }
+}

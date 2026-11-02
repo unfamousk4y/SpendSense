@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { purchaseTitle } from '../../domain/categories';
 import { addDays, type IsoDate } from '../../domain/dates';
 import type { Currency } from '../../domain/money';
 import type { Purchase } from '../../domain/week';
@@ -100,7 +101,7 @@ export function SpendingTrace({
             {shownPurchases.map((purchase) => (
               <li key={purchase.id} className={styles.detailsRow}>
                 <span>
-                  {purchase.merchant}
+                  {purchaseTitle(purchase)}
                   {purchase.note && <span className={styles.detailsNote}>{purchase.note}</span>}
                 </span>
                 <Money cents={purchase.cents} currency={currency} />

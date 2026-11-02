@@ -1,15 +1,31 @@
 // Pure summary of one Monday to Sunday week for one currency account.
+import type { CategoryId, NeedOrWant } from './categories';
 import { daysBetween, type IsoDate } from './dates';
 
 export type Purchase = {
+  /** Created once when the entry form opens; a repeated save reuses it. */
   id: string;
   date: IsoDate;
-  /** Where the money went, kept short: "Bookstore". */
+  /** Where the money went, kept short: "Bookstore". May be empty. */
   merchant: string;
   /** Optional detail shown on its own line: "Used statistics textbook". */
   note?: string;
+  category?: CategoryId;
+  needOrWant?: NeedOrWant;
   cents: number;
 };
+
+/**
+ * Adds a purchase unless one with the same id is already in the list, so a
+ * double tap or retry cannot record the same purchase twice. Returns a new
+ * list (or the same list when nothing changed) and never edits the old one.
+ */
+export function addPurchaseOnce(purchases: Purchase[], purchase: Purchase): Purchase[] {
+  if (purchases.some((existing) => existing.id === purchase.id)) {
+    return purchases;
+  }
+  return [...purchases, purchase];
+}
 
 export type WeekSummary = {
   spentCents: number;

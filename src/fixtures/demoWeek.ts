@@ -7,8 +7,11 @@ import type { Purchase } from '../domain/week';
 
 export type DemoAccount = {
   currency: Currency;
-  /** C now, after this week's purchases. */
-  currentCashCents: number;
+  /**
+   * C on Monday morning. Current cash is always derived as this minus the
+   * week's purchases, so it can never drift out of step with the list.
+   */
+  weekStartCashCents: number;
   /** P: protected savings allocation (part of C). */
   protectedCents: number;
   /** B: unpaid commitments due by the plan end date (part of C). */
@@ -28,31 +31,39 @@ export const demoAccounts: Record<Currency, DemoAccount> = {
   // The worked example from PRODUCT_PLAN.md, partway through the week.
   USD: {
     currency: 'USD',
-    currentCashCents: 96000,
+    weekStartCashCents: 100000,
     protectedCents: 20000,
     commitmentsCents: 20000,
     planEndDate: '2026-11-29',
     recommendedAllowanceCents: 15000,
     chosenAllowanceCents: 15000,
     purchases: [
-      { id: 'usd-1', date: '2026-11-03', merchant: 'Campus café', cents: 450 },
-      { id: 'usd-2', date: '2026-11-04', merchant: 'Bookstore', note: 'Used statistics textbook', cents: 2800 },
-      { id: 'usd-3', date: '2026-11-05', merchant: 'Bus pass top-up', cents: 750 },
+      { id: 'usd-1', date: '2026-11-03', merchant: 'Campus café', category: 'food', needOrWant: 'want', cents: 450 },
+      {
+        id: 'usd-2',
+        date: '2026-11-04',
+        merchant: 'Bookstore',
+        note: 'Used statistics textbook',
+        category: 'school',
+        needOrWant: 'need',
+        cents: 2800,
+      },
+      { id: 'usd-3', date: '2026-11-05', merchant: 'Bus pass top-up', category: 'transport', needOrWant: 'need', cents: 750 },
     ],
   },
   // Separate account with its own numbers; never combined with USD.
   // The student chose slightly more than suggested, to show both on screen.
   BSD: {
     currency: 'BSD',
-    currentCashCents: 32000,
+    weekStartCashCents: 34550,
     protectedCents: 5000,
     commitmentsCents: 12000,
     planEndDate: '2026-11-29',
     recommendedAllowanceCents: 4387,
     chosenAllowanceCents: 4500,
     purchases: [
-      { id: 'bsd-1', date: '2026-11-02', merchant: 'Fish fry lunch', cents: 1200 },
-      { id: 'bsd-2', date: '2026-11-04', merchant: 'Pharmacy', cents: 1350 },
+      { id: 'bsd-1', date: '2026-11-02', merchant: 'Fish fry lunch', category: 'food', needOrWant: 'want', cents: 1200 },
+      { id: 'bsd-2', date: '2026-11-04', merchant: 'Pharmacy', category: 'personalCare', needOrWant: 'need', cents: 1350 },
     ],
   },
 };
