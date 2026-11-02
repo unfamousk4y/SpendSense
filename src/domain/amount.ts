@@ -12,6 +12,7 @@ export const MAX_AMOUNT_CENTS = 10_000_000;
 export type AmountInvalidReason =
   | 'empty'
   | 'format'
+  | 'commaDecimal'
   | 'tooManyDecimals'
   | 'notPositive'
   | 'tooLarge';
@@ -20,10 +21,16 @@ export type AmountParseResult =
   | { kind: 'ok'; cents: number }
   | { kind: 'invalid'; reason: AmountInvalidReason };
 
-// Optional "$", whole-dollar digits, then optional "." with at least one digit.
+// Optional "$", whole dollars, then optional "." with at least one digit.
+// Whole dollars are either plain digits ("1250") or correctly grouped
+// thousands ("1,250", "12,345"); a comma anywhere else does not match.
 // Any number of decimal digits matches here so "12.505" can get the specific
 // tooManyDecimals reason instead of a generic format error.
-const AMOUNT = /^\$?(\d*)(?:\.(\d+))?$/;
+const AMOUNT = /^\$?(\d{1,3}(?:,\d{3})+|\d*)(?:\.(\d+))?$/;
+
+// "12,50" or "1,5": in many countries the comma is the decimal point. Removing
+// it would silently turn 12,50 into 1250.00, so this gets its own reason.
+const COMMA_AS_DECIMAL = /^\$?\d+,\d{1,2}$/;
 
 // Bad input is an expected user situation, so every problem is returned as a
 // reason for the screen to explain. Nothing here throws.
@@ -33,8 +40,13 @@ export function parseAmount(text: string): AmountParseResult {
     return invalid('empty');
   }
 
+  if (COMMA_AS_DECIMAL.test(trimmed)) {
+    return invalid('commaDecimal');
+  }
+
   const match = AMOUNT.exec(trimmed);
-  const whole = match?.[1] ?? '';
+  // The pattern has already checked where the commas are, so they can go.
+  const whole = (match?.[1] ?? '').replaceAll(',', '');
   const fraction = match?.[2] ?? '';
   // The pattern also matches "$" alone, which has no digits at all.
   if (!match || (whole === '' && fraction === '')) {

@@ -17,7 +17,8 @@ type AddSpendingDialogProps = {
 // The screen's wording for each reason parseAmount can return.
 const AMOUNT_MESSAGES: Record<AmountInvalidReason, string> = {
   empty: 'Enter an amount.',
-  format: 'Use numbers only, like 12.50.',
+  format: 'Use numbers only, like 12.50 or 1,250.00.',
+  commaDecimal: 'Use a period for cents, like 12.50.',
   tooManyDecimals: 'Please only use 2 decimals.',
   notPositive: 'Enter an amount above 0.',
   tooLarge: 'Amounts above 100,000.00 are not supported.',

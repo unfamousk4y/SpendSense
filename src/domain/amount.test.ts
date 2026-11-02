@@ -49,10 +49,45 @@ describe('parseAmount', () => {
     expect(parseAmount(text)).toEqual({ kind: 'invalid', reason: 'notPositive' });
   });
 
-  test.each(['-5', '$$12', '1,250', '1e3', '12.', '.', '$', 'abc', '$ 12', '12 50'])(
+  test.each(['-5', '$$12', '1e3', '12.', '.', '$', 'abc', '$ 12', '12 50'])(
     '%j is not a valid format',
     (text) => {
       expect(parseAmount(text)).toEqual({ kind: 'invalid', reason: 'format' });
     },
   );
+
+  // Commas approved 2026-11-02, but only as thousands separators.
+  describe('thousands commas', () => {
+    test.each([
+      ['1,000.00', 100000],
+      ['1,000', 100000],
+      ['1,250', 125000],
+      ['$1,250.50', 125050],
+      ['12,345.67', 1234567],
+      ['100,000', 10000000],
+    ])('reads %j as %i cents', (text, cents) => {
+      expect(parseAmount(text)).toEqual({ kind: 'ok', cents });
+    });
+
+    test('the limit still applies with commas', () => {
+      expect(parseAmount('100,000.01')).toEqual({ kind: 'invalid', reason: 'tooLarge' });
+    });
+
+    test('decimal rules still apply with commas', () => {
+      expect(parseAmount('1,000.505')).toEqual({ kind: 'invalid', reason: 'tooManyDecimals' });
+    });
+
+    // In many countries the comma is the decimal point. Silently dropping it
+    // would turn 12,50 into 1250.00, so ask for a period instead.
+    test.each(['12,50', '1,5', '10,00', '$12,50'])('%j looks like a comma used for cents', (text) => {
+      expect(parseAmount(text)).toEqual({ kind: 'invalid', reason: 'commaDecimal' });
+    });
+
+    test.each(['1,00,000', '1,2345', ',500', '1,,000', '1,000,', '12,345,67'])(
+      '%j has commas in the wrong place',
+      (text) => {
+        expect(parseAmount(text)).toEqual({ kind: 'invalid', reason: 'format' });
+      },
+    );
+  });
 });
