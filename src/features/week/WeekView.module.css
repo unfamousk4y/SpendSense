@@ -25,6 +25,32 @@
   font-size: 0.8125rem;
 }
 
+.demoText {
+  margin: 0;
+}
+
+.demoDate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+.nextDay {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--amber-ink);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--amber-ink);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
 .header {
   display: flex;
   flex-wrap: wrap;

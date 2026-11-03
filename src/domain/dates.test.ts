@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { addDays, daysBetween, localDateIn, planDays } from './dates';
+import { addDays, daysBetween, localDateIn, mondayOf, planDays } from './dates';
 import { suggestAllowance } from './allowance';
 
 // Expected values were worked out by hand on a calendar. 2026-11-02 is a Monday.
@@ -96,5 +96,17 @@ describe('daysBetween and addDays', () => {
     expect(addDays('2028-02-28', 1)).toBe('2028-02-29');
     expect(addDays('2026-12-31', 1)).toBe('2027-01-01');
     expect(addDays('2026-11-02', -1)).toBe('2026-11-01');
+  });
+});
+
+describe('mondayOf', () => {
+  test.each([
+    ['2026-11-02', '2026-11-02'], // Monday is its own week start
+    ['2026-11-05', '2026-11-02'], // Thursday
+    ['2026-11-08', '2026-11-02'], // Sunday still belongs to the week before Monday
+    ['2026-11-09', '2026-11-09'],
+    ['2027-01-01', '2026-12-28'], // Friday; the week starts in the previous year
+  ])('%s is in the week of %s', (date, monday) => {
+    expect(mondayOf(date)).toBe(monday);
   });
 });

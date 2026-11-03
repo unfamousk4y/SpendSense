@@ -3,6 +3,7 @@
 // ownership checks exist.
 import type { IsoDate } from '../domain/dates';
 import type { Currency } from '../domain/money';
+import type { AccountLedger, Ledger } from '../domain/ledger';
 import type { Purchase } from '../domain/week';
 
 export type DemoAccount = {
@@ -67,3 +68,35 @@ export const demoAccounts: Record<Currency, DemoAccount> = {
     ],
   },
 };
+
+/**
+ * The same fictional accounts as a ledger: the demo starts on DEMO_TODAY with
+ * one planned week (this one) and no closures yet.
+ */
+export const demoLedger: Ledger = {
+  today: DEMO_TODAY,
+  accounts: {
+    USD: toLedgerAccount(demoAccounts.USD),
+    BSD: toLedgerAccount(demoAccounts.BSD),
+  },
+};
+
+function toLedgerAccount(account: DemoAccount): AccountLedger {
+  return {
+    currency: account.currency,
+    openingCashCents: account.weekStartCashCents,
+    openingProtectedCents: account.protectedCents,
+    commitmentsCents: account.commitmentsCents,
+    planEndDate: account.planEndDate,
+    weeks: [
+      {
+        weekStart: DEMO_WEEK_START,
+        recommendedCents: account.recommendedAllowanceCents,
+        startingAllowanceCents: account.chosenAllowanceCents,
+        changes: [],
+      },
+    ],
+    purchases: account.purchases,
+    closures: [],
+  };
+}

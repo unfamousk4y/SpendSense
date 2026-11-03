@@ -102,7 +102,8 @@ export function MoneyFlow({ currency, flow, pulse }: MoneyFlowProps) {
                   ].join(' ')}
                 />
                 {isPulsing && (
-                  <path key={pulse.id} d={centerline} pathLength={100} className={styles.streak} />
+                  // Its own key: the band beside it is already keyed by the purchase id.
+                  <path key={`${pulse.id}-streak`} d={centerline} pathLength={100} className={styles.streak} />
                 )}
               </g>
             );

@@ -1,60 +1,34 @@
-import { useState } from 'react';
-import { currentAllowanceCents, recordAllowanceChange, type AllowanceChange } from './domain/allowanceChange';
+import { useReducer, useState } from 'react';
+import { ledgerReducer, weekAccount } from './domain/ledger';
 import type { Currency } from './domain/money';
-import { addPurchaseOnce, removePurchase, updatePurchase, type Purchase } from './domain/week';
 import { WeekView } from './features/week/WeekView';
-import { DEMO_TODAY, DEMO_WEEK_START, demoAccounts } from './fixtures/demoWeek';
+import { demoLedger } from './fixtures/demoWeek';
 import { MotionProvider } from './ui/MotionProvider';
 
-// State lives here, above everything that reads it: the selected account, each
-// account's purchases and its allowance changes. Kept in memory only (fictional
-// demo data); a reload starts again from the fixtures.
+// Everything the app remembers lives in one ledger, changed only by
+// ledgerReducer (a pure function in the domain folder). Each button sends an
+// action describing what happened; React hands it to the reducer with the
+// latest state, so related changes (closing a week and starting the next)
+// arrive together. Kept in memory only (fictional demo data); a reload starts
+// again from the fixtures.
 export default function App() {
+  const [ledger, dispatch] = useReducer(ledgerReducer, demoLedger);
+  // Which account is on screen is a viewing choice, not part of the ledger.
   const [currency, setCurrency] = useState<Currency>('USD');
-  const [purchasesByCurrency, setPurchasesByCurrency] = useState<Record<Currency, Purchase[]>>({
-    USD: demoAccounts.USD.purchases,
-    BSD: demoAccounts.BSD.purchases,
-  });
-  // Every saved allowance change, oldest first. The allowance in force is
-  // derived from this list and the start-of-week snapshot, never stored twice.
-  const [allowanceChangesByCurrency, setAllowanceChangesByCurrency] = useState<Record<Currency, AllowanceChange[]>>({
-    USD: [],
-    BSD: [],
-  });
 
-  // Every change goes through one pure list function from the domain. The
-  // "previous value" form hands us the latest lists, so two changes in quick
-  // succession cannot overwrite each other.
-  function changePurchases(change: (purchases: Purchase[]) => Purchase[]) {
-    setPurchasesByCurrency((previous) => ({ ...previous, [currency]: change(previous[currency]) }));
-  }
-
-  function changeAllowance(change: AllowanceChange) {
-    setAllowanceChangesByCurrency((previous) => ({
-      ...previous,
-      [currency]: recordAllowanceChange(previous[currency], change),
-    }));
-  }
-
-  const allowanceChanges = allowanceChangesByCurrency[currency];
-  const account = {
-    ...demoAccounts[currency],
-    purchases: purchasesByCurrency[currency],
-    chosenAllowanceCents: currentAllowanceCents(demoAccounts[currency].chosenAllowanceCents, allowanceChanges),
-  };
+  const account = weekAccount(ledger, currency);
 
   return (
     <MotionProvider>
       <WeekView
         account={account}
-        allowanceChanges={allowanceChanges}
-        weekStart={DEMO_WEEK_START}
-        today={DEMO_TODAY}
+        today={ledger.today}
         onCurrencyChange={setCurrency}
-        onAddPurchase={(purchase) => changePurchases((list) => addPurchaseOnce(list, purchase))}
-        onUpdatePurchase={(purchase) => changePurchases((list) => updatePurchase(list, purchase))}
-        onDeletePurchase={(id) => changePurchases((list) => removePurchase(list, id))}
-        onChangeAllowance={changeAllowance}
+        onAddPurchase={(purchase) => dispatch({ type: 'addPurchase', currency, purchase })}
+        onUpdatePurchase={(purchase) => dispatch({ type: 'updatePurchase', currency, purchase })}
+        onDeletePurchase={(id) => dispatch({ type: 'deletePurchase', currency, id })}
+        onChangeAllowance={(change) => dispatch({ type: 'changeAllowance', currency, change })}
+        onNextDay={() => dispatch({ type: 'nextDay' })}
       />
     </MotionProvider>
   );

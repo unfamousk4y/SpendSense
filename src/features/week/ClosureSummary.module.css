@@ -1,0 +1,41 @@
+.card {
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--teal);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.overspent {
+  border-left-color: var(--red);
+}
+
+.heading {
+  margin: 0 0 6px;
+  font-size: 0.9375rem;
+}
+
+.line {
+  margin: 0 0 4px;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.line strong {
+  color: var(--teal);
+}
+
+.adjust {
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 0 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 650;
+  cursor: pointer;
+}

@@ -7,11 +7,12 @@ import { categoryLabel, purchaseTitle } from '../../domain/categories';
 import { addDays, daysBetween, planDays, type IsoDate } from '../../domain/dates';
 import type { Currency } from '../../domain/money';
 import { summarizeWeek, type Purchase } from '../../domain/week';
-import type { DemoAccount } from '../../fixtures/demoWeek';
+import type { WeekAccount } from '../../domain/ledger';
 import { Money } from '../../ui/Money';
 import { ThemeSwitch } from '../../ui/ThemeSwitch';
 import { AdjustAllowanceDialog } from './AdjustAllowanceDialog';
 import { CalculationBreakdown } from './CalculationBreakdown';
+import { ClosureSummary } from './ClosureSummary';
 import { moneyFlow } from '../../domain/moneyFlow';
 import { CashPanel } from './CashPanel';
 import { MoneyFlow } from './MoneyFlow';
@@ -21,16 +22,15 @@ import { SpendingTrace } from './SpendingTrace';
 import styles from './WeekView.module.css';
 
 type WeekViewProps = {
-  account: DemoAccount;
-  /** Saved changes to this week's allowance, oldest first. */
-  allowanceChanges: AllowanceChange[];
-  weekStart: IsoDate;
+  account: WeekAccount;
   today: IsoDate;
   onCurrencyChange: (currency: Currency) => void;
   onAddPurchase: (purchase: Purchase) => void;
   onUpdatePurchase: (purchase: Purchase) => void;
   onDeletePurchase: (id: string) => void;
   onChangeAllowance: (change: AllowanceChange) => void;
+  /** Demo only: move the date forward one day. */
+  onNextDay: () => void;
 };
 
 /** Which form is open, if any. Editing carries the purchase being edited. */
@@ -58,14 +58,13 @@ const label = (date: IsoDate, options: Intl.DateTimeFormatOptions) =>
 
 export function WeekView({
   account,
-  allowanceChanges,
-  weekStart,
   today,
   onCurrencyChange,
   onAddPurchase,
   onUpdatePurchase,
   onDeletePurchase,
   onChangeAllowance,
+  onNextDay,
 }: WeekViewProps) {
   const [dialog, setDialog] = useState<DialogState>(null);
   // Which cash panel is expanded into the focused view, if any.
@@ -73,7 +72,7 @@ export function WeekView({
   // The last change, for the confirmation line. Cleared when switching account.
   const [lastAction, setLastAction] = useState<LastAction>(null);
 
-  const { currency } = account;
+  const { currency, weekStart } = account;
   const summary = summarizeWeek(weekStart, account.chosenAllowanceCents, account.purchases);
   // Derived, never stored: cash on Monday minus everything spent since.
   const currentCashCents = account.weekStartCashCents - summary.spentCents;
@@ -104,7 +103,8 @@ export function WeekView({
   // A fresh suggestion for the days left this week, as a total for the week.
   const { daysThisWeek, daysLeft } = planDays(today, account.planEndDate);
   const suggestion = midweekSuggestion({ spentCents: summary.spentCents, freeCents, daysThisWeek, daysLeft });
-  const lastChange = allowanceChanges.at(-1);
+  const lastChange = account.allowanceChanges.at(-1);
+  const planEnded = today >= account.planEndDate;
 
   function handleSave(purchase: Purchase) {
     if (dialog?.mode === 'edit') {
@@ -133,6 +133,12 @@ export function WeekView({
   function handleCurrencyChange(next: Currency) {
     setLastAction(null);
     onCurrencyChange(next);
+  }
+
+  function handleNextDay() {
+    // The confirmation line is about the day just left behind.
+    setLastAction(null);
+    onNextDay();
   }
 
   const cashAllocation = allocateCash({ ...cashParts, weekRemainingCents: summary.remainingCents });
@@ -170,10 +176,25 @@ export function WeekView({
 
   return (
     <div className={`${styles.page} ${expandedFrom ? styles.receded : ''}`}>
-      <p className={styles.demoBanner}>
-        <strong>Demo data.</strong> These numbers are fictional. Purchases you add are kept only
-        until you close or reload this tab.
-      </p>
+      <div className={styles.demoBanner}>
+        <p className={styles.demoText}>
+          <strong>Demo data.</strong> These numbers are fictional. Purchases you add are kept only
+          until you close or reload this tab.
+        </p>
+        {/* Lets the demo reach the end of a week, where closure happens. */}
+        <div className={styles.demoDate}>
+          <span>
+            Demo date: <time dateTime={today}>{label(today, { weekday: 'short', month: 'short', day: 'numeric' })}</time>
+          </span>
+          {planEnded ? (
+            <span>Plan ends today</span>
+          ) : (
+            <button type="button" className={styles.nextDay} onClick={handleNextDay}>
+              Next day
+            </button>
+          )}
+        </div>
+      </div>
 
       <header className={styles.header}>
         <div className={styles.currencySwitch} role="group" aria-label="Account currency">
@@ -198,6 +219,15 @@ export function WeekView({
 
       <main className={styles.layout}>
         <div className={styles.primary}>
+          {account.previousClosure && (
+            <ClosureSummary
+              currency={currency}
+              closure={account.previousClosure}
+              weekLabel={label(account.previousClosure.weekStart, { month: 'short', day: 'numeric' })}
+              protectedNowCents={account.protectedCents}
+              onAdjust={() => setDialog({ mode: 'allowance' })}
+            />
+          )}
           <section aria-labelledby="remaining-heading">
             <h1 id="remaining-heading" className={styles.eyebrow}>
               {overspent ? 'Overspent this week' : 'Weekly remaining'}
@@ -259,6 +289,8 @@ export function WeekView({
               Spending this week
             </h2>
             <SpendingTrace
+              // A new week starts with no day selected.
+              key={weekStart}
               currency={currency}
               weekStart={weekStart}
               purchases={account.purchases}

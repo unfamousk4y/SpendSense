@@ -50,6 +50,13 @@ export function planDays(today: IsoDate, endDate: IsoDate): PlanDays {
   return { daysThisWeek: Math.min(daysThroughSunday, daysLeft), daysLeft };
 }
 
+/** The Monday that starts the week containing `date` (the date itself on a Monday). */
+export function mondayOf(date: IsoDate): IsoDate {
+  // Days since Monday: Monday 0, Tuesday 1 ... Sunday 6.
+  const weekday = new Date(dayNumber(date) * MS_PER_DAY).getUTCDay();
+  return addDays(date, -((weekday + 6) % 7));
+}
+
 /** Whole calendar days from `from` to `to`; negative when `to` is earlier. */
 export function daysBetween(from: IsoDate, to: IsoDate): number {
   return dayNumber(to) - dayNumber(from);
