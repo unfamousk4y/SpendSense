@@ -3,7 +3,17 @@
   max-width: 1120px;
   margin: 0 auto;
   padding: 12px 16px 104px;
+  transition: transform 250ms cubic-bezier(0.2, 0, 0, 1);
 }
+
+/* While a panel is expanded, the dashboard steps back slightly (the dialog's
+   backdrop does the dimming). No movement when reduced motion is requested. */
+@media (prefers-reduced-motion: no-preference) {
+  .receded {
+    transform: scale(0.985);
+  }
+}
+
 
 .demoBanner {
   margin: 0 0 14px;

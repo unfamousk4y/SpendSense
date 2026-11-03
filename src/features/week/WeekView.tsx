@@ -1,3 +1,4 @@
+import { AnimatePresence } from 'motion/react';
 import { useState } from 'react';
 import { allocateCash } from '../../domain/allocation';
 import { freeCashCents } from '../../domain/allowance';
@@ -9,7 +10,8 @@ import type { DemoAccount } from '../../fixtures/demoWeek';
 import { Money } from '../../ui/Money';
 import { ThemeSwitch } from '../../ui/ThemeSwitch';
 import { CalculationBreakdown } from './CalculationBreakdown';
-import { CashAllocationChart } from './CashAllocationChart';
+import { CashPanel } from './CashPanel';
+import { ExpandedCashView } from './ExpandedCashView';
 import { PurchaseDialog } from './PurchaseDialog';
 import { SpendingTrace } from './SpendingTrace';
 import styles from './WeekView.module.css';
@@ -26,6 +28,13 @@ type WeekViewProps = {
 
 /** Which form is open, if any. Editing carries the purchase being edited. */
 type DialogState = { mode: 'add' } | { mode: 'edit'; purchase: Purchase } | null;
+
+/**
+ * The cash panel is drawn twice (below the number on phones, in the side column
+ * on desktop; CSS hides one). Each copy has its own layoutId so the expanded
+ * view grows out of, and returns to, the copy that was actually tapped.
+ */
+type CashPanelId = 'cash-phone' | 'cash-desktop';
 
 /** What the confirmation line under the remaining amount reports. */
 type LastAction = { verb: 'Saved' | 'Updated' | 'Deleted'; purchase: Purchase } | null;
@@ -47,6 +56,8 @@ export function WeekView({
   onDeletePurchase,
 }: WeekViewProps) {
   const [dialog, setDialog] = useState<DialogState>(null);
+  // Which cash panel is expanded into the focused view, if any.
+  const [expandedFrom, setExpandedFrom] = useState<CashPanelId | null>(null);
   // The last change, for the confirmation line. Cleared when switching account.
   const [lastAction, setLastAction] = useState<LastAction>(null);
 
@@ -100,10 +111,16 @@ export function WeekView({
     onCurrencyChange(next);
   }
 
-  const allocation = (
-    <CashAllocationChart
+  const cashAllocation = allocateCash({ ...cashParts, weekRemainingCents: summary.remainingCents });
+
+  const cashPanel = (id: CashPanelId, className: string, headingId: string) => (
+    <CashPanel
+      layoutId={id}
+      className={className}
+      headingId={headingId}
       currency={currency}
-      allocation={allocateCash({ ...cashParts, weekRemainingCents: summary.remainingCents })}
+      allocation={cashAllocation}
+      onOpen={() => setExpandedFrom(id)}
     />
   );
 
@@ -121,7 +138,7 @@ export function WeekView({
   );
 
   return (
-    <div className={styles.page}>
+    <div className={`${styles.page} ${expandedFrom ? styles.receded : ''}`}>
       <p className={styles.demoBanner}>
         <strong>Demo data.</strong> These numbers are fictional. Purchases you add are kept only
         until you close or reload this tab.
@@ -183,12 +200,7 @@ export function WeekView({
             </div>
           </section>
 
-          <section className={`${styles.section} ${styles.phoneOnly}`} aria-labelledby="cash-heading-phone">
-            <h2 id="cash-heading-phone" className={styles.sectionTitle}>
-              Where your {currency} cash is
-            </h2>
-            {allocation}
-          </section>
+          {cashPanel('cash-phone', `${styles.section} ${styles.phoneOnly}`, 'cash-heading-phone')}
 
           <section className={styles.section} aria-labelledby="trace-heading">
             <h2 id="trace-heading" className={styles.sectionTitle}>
@@ -260,12 +272,7 @@ export function WeekView({
 
         {/* Desktop shows these side by side instead of below; phones hide this column. */}
         <aside className={styles.sideColumn}>
-          <section className={styles.card} aria-labelledby="cash-heading">
-            <h2 id="cash-heading" className={styles.sectionTitle}>
-              Where your {currency} cash is
-            </h2>
-            {allocation}
-          </section>
+          {cashPanel('cash-desktop', styles.card, 'cash-heading')}
           <section className={styles.card} aria-labelledby="calc-heading">
             <h2 id="calc-heading" className={styles.sectionTitle}>
               How this is calculated <span className={styles.currencyTag}>{currency}</span>
@@ -278,6 +285,20 @@ export function WeekView({
       <footer className={styles.footer}>
         <ThemeSwitch />
       </footer>
+
+      {/* AnimatePresence keeps the view on screen while it shrinks back to its panel. */}
+      <AnimatePresence>
+        {expandedFrom && (
+          <ExpandedCashView
+            key={expandedFrom}
+            layoutId={expandedFrom}
+            currency={currency}
+            allocation={cashAllocation}
+            purchases={account.purchases}
+            onClose={() => setExpandedFrom(null)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Mounted only while open, so every opening starts fresh: an empty form
           and a new id when adding, the purchase's own values and id when editing. */}

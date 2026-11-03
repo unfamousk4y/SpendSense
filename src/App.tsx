@@ -3,6 +3,7 @@ import type { Currency } from './domain/money';
 import { addPurchaseOnce, removePurchase, updatePurchase, type Purchase } from './domain/week';
 import { WeekView } from './features/week/WeekView';
 import { DEMO_TODAY, DEMO_WEEK_START, demoAccounts } from './fixtures/demoWeek';
+import { MotionProvider } from './ui/MotionProvider';
 
 // State lives here, above everything that reads it: the selected account and
 // each account's purchases. Kept in memory only (fictional demo data); a reload
@@ -24,14 +25,16 @@ export default function App() {
   const account = { ...demoAccounts[currency], purchases: purchasesByCurrency[currency] };
 
   return (
-    <WeekView
-      account={account}
-      weekStart={DEMO_WEEK_START}
-      today={DEMO_TODAY}
-      onCurrencyChange={setCurrency}
-      onAddPurchase={(purchase) => changePurchases((list) => addPurchaseOnce(list, purchase))}
-      onUpdatePurchase={(purchase) => changePurchases((list) => updatePurchase(list, purchase))}
-      onDeletePurchase={(id) => changePurchases((list) => removePurchase(list, id))}
-    />
+    <MotionProvider>
+      <WeekView
+        account={account}
+        weekStart={DEMO_WEEK_START}
+        today={DEMO_TODAY}
+        onCurrencyChange={setCurrency}
+        onAddPurchase={(purchase) => changePurchases((list) => addPurchaseOnce(list, purchase))}
+        onUpdatePurchase={(purchase) => changePurchases((list) => updatePurchase(list, purchase))}
+        onDeletePurchase={(id) => changePurchases((list) => removePurchase(list, id))}
+      />
+    </MotionProvider>
   );
 }

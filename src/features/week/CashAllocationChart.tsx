@@ -48,7 +48,8 @@ export function CashAllocationChart({ currency, allocation }: CashAllocationChar
 
   return (
     <div className={styles.chart}>
-      <div className={styles.ringWrap}>
+      {/* data-depth: how far this layer rises when a tilting panel is hovered. */}
+      <div className={styles.ringWrap} data-depth="2">
         <svg className={styles.ring} viewBox="0 0 120 120" aria-hidden="true">
           <circle className={styles.track} cx="60" cy="60" r="48" pathLength="100" />
           {slices
@@ -73,7 +74,7 @@ export function CashAllocationChart({ currency, allocation }: CashAllocationChar
         </p>
       </div>
 
-      <ul className={styles.legend}>
+      <ul className={styles.legend} data-depth="1">
         {segments.map((segment) => (
           <li key={segment.key} className={styles.legendRow}>
             <span className={`${styles.swatch} ${styles[segment.key]}`} aria-hidden="true" />

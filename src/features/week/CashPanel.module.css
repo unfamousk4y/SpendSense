@@ -1,0 +1,65 @@
+/* preserve-3d lets the layers inside keep their own depth as the panel tilts. */
+.panel {
+  position: relative;
+  cursor: pointer;
+  transform-style: preserve-3d;
+  transition: box-shadow 200ms ease;
+}
+
+.panel:hover {
+  box-shadow: 0 18px 40px var(--shadow);
+}
+
+.title {
+  margin: 0 0 10px;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.expandButton {
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+/* A soft light that follows the pointer (--glare-x/-y come from usePointerTilt). */
+.glare {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle at var(--glare-x, 50%) var(--glare-y, 50%),
+    rgb(255 255 255 / 0.1),
+    transparent 55%
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+
+/* Depth only for a real mouse and only when motion is welcome. At rest
+   everything sits flat, so text is never scaled or blurred by perspective. */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .panel:hover .glare {
+    opacity: 1;
+  }
+
+  .panel [data-depth] {
+    transition: transform 220ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .panel:hover [data-depth='1'] {
+    transform: translateZ(14px);
+  }
+
+  .panel:hover [data-depth='2'] {
+    transform: translateZ(30px);
+  }
+}
