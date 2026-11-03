@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { addPurchaseOnce, summarizeWeek, type Purchase } from './week';
+import { addPurchaseOnce, removePurchase, summarizeWeek, updatePurchase, type Purchase } from './week';
 
 const workedExamplePurchases: Purchase[] = [
   { id: 'a', date: '2026-11-03', merchant: 'Campus café', cents: 450 },
@@ -53,5 +53,35 @@ describe('addPurchaseOnce', () => {
     const twice = addPurchaseOnce(once, { ...lunch });
     expect(twice).toBe(once);
     expect(summarizeWeek('2026-11-02', 15000, twice).spentCents).toBe(5200);
+  });
+});
+
+describe('updatePurchase', () => {
+  test('replaces the matching purchase in place and keeps the total honest', () => {
+    // Bookstore 28.00 corrected to 30.00: spent goes from 40.00 to 42.00, not 70.00.
+    const corrected: Purchase = { id: 'b', date: '2026-11-04', merchant: 'Bookstore', cents: 3000 };
+    const after = updatePurchase(workedExamplePurchases, corrected);
+    expect(after.map((p) => p.id)).toEqual(['a', 'b', 'c']);
+    expect(summarizeWeek('2026-11-02', 15000, after).spentCents).toBe(4200);
+    expect(workedExamplePurchases[1].cents).toBe(2800);
+  });
+
+  test('an unknown id changes nothing instead of adding a purchase', () => {
+    const stray: Purchase = { id: 'not-there', date: '2026-11-04', merchant: 'Bookstore', cents: 3000 };
+    expect(updatePurchase(workedExamplePurchases, stray)).toBe(workedExamplePurchases);
+  });
+});
+
+describe('removePurchase', () => {
+  test('removes only the matching purchase', () => {
+    const after = removePurchase(workedExamplePurchases, 'b');
+    expect(after.map((p) => p.id)).toEqual(['a', 'c']);
+    expect(summarizeWeek('2026-11-02', 15000, after).spentCents).toBe(1200);
+    expect(workedExamplePurchases).toHaveLength(3);
+  });
+
+  test('deleting twice (double tap or retry) is harmless', () => {
+    const once = removePurchase(workedExamplePurchases, 'b');
+    expect(removePurchase(once, 'b')).toBe(once);
   });
 });

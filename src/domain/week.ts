@@ -27,6 +27,26 @@ export function addPurchaseOnce(purchases: Purchase[], purchase: Purchase): Purc
   return [...purchases, purchase];
 }
 
+/**
+ * Replaces the purchase with the same id by its corrected version. An edit
+ * keeps the id: it is the same real purchase. Unknown ids change nothing, so an
+ * edit can never quietly turn into an extra purchase.
+ */
+export function updatePurchase(purchases: Purchase[], corrected: Purchase): Purchase[] {
+  if (!purchases.some((existing) => existing.id === corrected.id)) {
+    return purchases;
+  }
+  return purchases.map((existing) => (existing.id === corrected.id ? corrected : existing));
+}
+
+/** Removes the purchase with this id; an unknown id (already deleted) changes nothing. */
+export function removePurchase(purchases: Purchase[], id: string): Purchase[] {
+  if (!purchases.some((existing) => existing.id === id)) {
+    return purchases;
+  }
+  return purchases.filter((existing) => existing.id !== id);
+}
+
 export type WeekSummary = {
   spentCents: number;
   /** Chosen allowance minus spending. Negative means overspent; never clamped. */

@@ -8,9 +8,9 @@ import { summarizeWeek, type Purchase } from '../../domain/week';
 import type { DemoAccount } from '../../fixtures/demoWeek';
 import { Money } from '../../ui/Money';
 import { ThemeSwitch } from '../../ui/ThemeSwitch';
-import { AddSpendingDialog } from './AddSpendingDialog';
 import { CalculationBreakdown } from './CalculationBreakdown';
 import { CashAllocationChart } from './CashAllocationChart';
+import { PurchaseDialog } from './PurchaseDialog';
 import { SpendingTrace } from './SpendingTrace';
 import styles from './WeekView.module.css';
 
@@ -20,7 +20,15 @@ type WeekViewProps = {
   today: IsoDate;
   onCurrencyChange: (currency: Currency) => void;
   onAddPurchase: (purchase: Purchase) => void;
+  onUpdatePurchase: (purchase: Purchase) => void;
+  onDeletePurchase: (id: string) => void;
 };
+
+/** Which form is open, if any. Editing carries the purchase being edited. */
+type DialogState = { mode: 'add' } | { mode: 'edit'; purchase: Purchase } | null;
+
+/** What the confirmation line under the remaining amount reports. */
+type LastAction = { verb: 'Saved' | 'Updated' | 'Deleted'; purchase: Purchase } | null;
 
 const CURRENCIES: Currency[] = ['USD', 'BSD'];
 
@@ -29,10 +37,18 @@ const CURRENCIES: Currency[] = ['USD', 'BSD'];
 const label = (date: IsoDate, options: Intl.DateTimeFormatOptions) =>
   new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', { ...options, timeZone: 'UTC' });
 
-export function WeekView({ account, weekStart, today, onCurrencyChange, onAddPurchase }: WeekViewProps) {
-  const [isAdding, setIsAdding] = useState(false);
-  // The last purchase saved, for the confirmation line. Cleared when switching account.
-  const [lastSaved, setLastSaved] = useState<Purchase | null>(null);
+export function WeekView({
+  account,
+  weekStart,
+  today,
+  onCurrencyChange,
+  onAddPurchase,
+  onUpdatePurchase,
+  onDeletePurchase,
+}: WeekViewProps) {
+  const [dialog, setDialog] = useState<DialogState>(null);
+  // The last change, for the confirmation line. Cleared when switching account.
+  const [lastAction, setLastAction] = useState<LastAction>(null);
 
   const { currency } = account;
   const summary = summarizeWeek(weekStart, account.chosenAllowanceCents, account.purchases);
@@ -62,13 +78,25 @@ export function WeekView({ account, weekStart, today, onCurrencyChange, onAddPur
   const newestFirst = [...account.purchases].reverse().sort((a, b) => b.date.localeCompare(a.date));
 
   function handleSave(purchase: Purchase) {
-    onAddPurchase(purchase);
-    setLastSaved(purchase);
-    setIsAdding(false);
+    if (dialog?.mode === 'edit') {
+      onUpdatePurchase(purchase);
+      setLastAction({ verb: 'Updated', purchase });
+    } else {
+      onAddPurchase(purchase);
+      setLastAction({ verb: 'Saved', purchase });
+    }
+    setDialog(null);
+  }
+
+  function handleDelete(id: string) {
+    const deleted = account.purchases.find((purchase) => purchase.id === id);
+    onDeletePurchase(id);
+    if (deleted) setLastAction({ verb: 'Deleted', purchase: deleted });
+    setDialog(null);
   }
 
   function handleCurrencyChange(next: Currency) {
-    setLastSaved(null);
+    setLastAction(null);
     onCurrencyChange(next);
   }
 
@@ -141,14 +169,15 @@ export function WeekView({ account, weekStart, today, onCurrencyChange, onAddPur
             )}
             {/* role="status" makes screen readers announce the change without moving focus. */}
             <p className={styles.savedStatus} role="status">
-              {lastSaved && (
+              {lastAction && (
                 <>
-                  Saved <Money cents={lastSaved.cents} currency={currency} /> · {purchaseTitle(lastSaved)}
+                  {lastAction.verb} <Money cents={lastAction.purchase.cents} currency={currency} /> ·{' '}
+                  {purchaseTitle(lastAction.purchase)}
                 </>
               )}
             </p>
             <div className={styles.actionBar}>
-              <button type="button" className={styles.addButton} onClick={() => setIsAdding(true)}>
+              <button type="button" className={styles.addButton} onClick={() => setDialog({ mode: 'add' })}>
                 + Add spending
               </button>
             </div>
@@ -186,7 +215,13 @@ export function WeekView({ account, weekStart, today, onCurrencyChange, onAddPur
             ) : (
               <ul className={styles.activity}>
                 {newestFirst.map((purchase) => (
-                  <li key={purchase.id} className={styles.activityRow}>
+                  <li key={purchase.id}>
+                    {/* The whole row is one button: tap to edit or delete this purchase. */}
+                    <button
+                      type="button"
+                      className={styles.activityRow}
+                      onClick={() => setDialog({ mode: 'edit', purchase })}
+                    >
                     <time className={styles.activityDay} dateTime={purchase.date}>
                       {label(purchase.date, { weekday: 'short' })}
                     </time>
@@ -207,6 +242,10 @@ export function WeekView({ account, weekStart, today, onCurrencyChange, onAddPur
                     <span className={styles.amount}>
                       <Money cents={purchase.cents} currency={currency} />
                     </span>
+                    <span className={styles.editHint} aria-hidden="true">
+                      Edit
+                    </span>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -240,13 +279,19 @@ export function WeekView({ account, weekStart, today, onCurrencyChange, onAddPur
         <ThemeSwitch />
       </footer>
 
-      {/* Mounted only while open, so every opening starts with an empty form and a new id. */}
-      {isAdding && (
-        <AddSpendingDialog
+      {/* Mounted only while open, so every opening starts fresh: an empty form
+          and a new id when adding, the purchase's own values and id when editing. */}
+      {dialog && (
+        <PurchaseDialog
+          // A different key per purchase makes React start a fresh form when
+          // switching straight from one purchase to another.
+          key={dialog.mode === 'edit' ? dialog.purchase.id : 'add'}
           currency={currency}
           dates={entryDates}
+          existing={dialog.mode === 'edit' ? dialog.purchase : undefined}
           onSave={handleSave}
-          onClose={() => setIsAdding(false)}
+          onDelete={handleDelete}
+          onClose={() => setDialog(null)}
         />
       )}
     </div>

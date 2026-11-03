@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Currency } from './domain/money';
-import { addPurchaseOnce, type Purchase } from './domain/week';
+import { addPurchaseOnce, removePurchase, updatePurchase, type Purchase } from './domain/week';
 import { WeekView } from './features/week/WeekView';
 import { DEMO_TODAY, DEMO_WEEK_START, demoAccounts } from './fixtures/demoWeek';
 
@@ -14,13 +14,11 @@ export default function App() {
     BSD: demoAccounts.BSD.purchases,
   });
 
-  function addPurchase(purchase: Purchase) {
-    // The "previous value" form: React hands us the latest lists, so two saves
-    // in quick succession cannot overwrite each other.
-    setPurchasesByCurrency((previous) => ({
-      ...previous,
-      [currency]: addPurchaseOnce(previous[currency], purchase),
-    }));
+  // Every change goes through one pure list function from the domain. The
+  // "previous value" form hands us the latest lists, so two changes in quick
+  // succession cannot overwrite each other.
+  function changePurchases(change: (purchases: Purchase[]) => Purchase[]) {
+    setPurchasesByCurrency((previous) => ({ ...previous, [currency]: change(previous[currency]) }));
   }
 
   const account = { ...demoAccounts[currency], purchases: purchasesByCurrency[currency] };
@@ -31,7 +29,9 @@ export default function App() {
       weekStart={DEMO_WEEK_START}
       today={DEMO_TODAY}
       onCurrencyChange={setCurrency}
-      onAddPurchase={addPurchase}
+      onAddPurchase={(purchase) => changePurchases((list) => addPurchaseOnce(list, purchase))}
+      onUpdatePurchase={(purchase) => changePurchases((list) => updatePurchase(list, purchase))}
+      onDeletePurchase={(id) => changePurchases((list) => removePurchase(list, id))}
     />
   );
 }

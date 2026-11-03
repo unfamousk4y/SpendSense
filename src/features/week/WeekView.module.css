@@ -159,13 +159,32 @@
   list-style: none;
 }
 
+/* Each row is a button (tap to edit), styled to read as a list row. */
 .activityRow {
   display: grid;
-  grid-template-columns: 2.75rem 1fr auto;
+  grid-template-columns: 2.75rem 1fr auto auto;
   gap: 12px;
   align-items: baseline;
-  padding: 10px 0;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 4px;
+  border: 0;
   border-bottom: 1px solid var(--rule);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.activityRow:hover {
+  background: var(--surface);
+}
+
+.editHint {
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 650;
 }
 
 .activityDay {

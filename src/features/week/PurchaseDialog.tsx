@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { parseAmount, type AmountInvalidReason } from '../../domain/amount';
-import { CATEGORIES, type CategoryId, type NeedOrWant } from '../../domain/categories';
+import { CATEGORIES, purchaseTitle, type CategoryId, type NeedOrWant } from '../../domain/categories';
 import type { IsoDate } from '../../domain/dates';
-import type { Currency } from '../../domain/money';
+import { formatCents, type Currency } from '../../domain/money';
 import type { Purchase } from '../../domain/week';
-import styles from './AddSpendingDialog.module.css';
+import { Money } from '../../ui/Money';
+import styles from './PurchaseDialog.module.css';
 
-type AddSpendingDialogProps = {
+type PurchaseDialogProps = {
   currency: Currency;
   /** Days the purchase may be dated, newest first; the first is today. */
   dates: { date: IsoDate; label: string }[];
+  /** Present when editing: the form starts filled in and offers Delete. */
+  existing?: Purchase;
   onSave: (purchase: Purchase) => void;
+  onDelete?: (id: string) => void;
   onClose: () => void;
 };
 
@@ -24,19 +28,25 @@ const AMOUNT_MESSAGES: Record<AmountInvalidReason, string> = {
   tooLarge: 'Amounts above 100,000.00 are not supported.',
 };
 
-export function AddSpendingDialog({ currency, dates, onSave, onClose }: AddSpendingDialogProps) {
-  // One id per opening of the form. Every save attempt from this form reuses it,
-  // so addPurchaseOnce can ignore a double tap. useState keeps it stable across redraws.
-  const [entryId] = useState(() => crypto.randomUUID());
+export function PurchaseDialog({ currency, dates, existing, onSave, onDelete, onClose }: PurchaseDialogProps) {
+  const isEditing = existing !== undefined;
 
-  // Controlled inputs: each box shows exactly what is in state.
-  const [amountText, setAmountText] = useState('');
-  const [category, setCategory] = useState<CategoryId | null>(null);
-  const [needOrWant, setNeedOrWant] = useState<NeedOrWant | null>(null);
-  const [merchant, setMerchant] = useState('');
-  const [note, setNote] = useState('');
-  const [date, setDate] = useState(dates[0].date);
+  // The id belongs to one real purchase for its whole life: an edit keeps the
+  // existing one; a new entry gets one id per opening of the form, which every
+  // save attempt reuses, so addPurchaseOnce can ignore a double tap.
+  const [entryId] = useState(() => existing?.id ?? crypto.randomUUID());
+
+  // Controlled inputs: each box shows exactly what is in state. When editing,
+  // they start from the existing purchase.
+  const [amountText, setAmountText] = useState(existing ? formatCents(existing.cents) : '');
+  const [category, setCategory] = useState<CategoryId | null>(existing?.category ?? null);
+  const [needOrWant, setNeedOrWant] = useState<NeedOrWant | null>(existing?.needOrWant ?? null);
+  const [merchant, setMerchant] = useState(existing?.merchant ?? '');
+  const [note, setNote] = useState(existing?.note ?? '');
+  const [date, setDate] = useState(existing?.date ?? dates[0].date);
   const [amountError, setAmountError] = useState<AmountInvalidReason | null>(null);
+  // Delete asks first, inside the form, so one mis-tap cannot remove a purchase.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // A ref is a handle to the real browser element, for the few things React
   // does not do itself: opening a <dialog> as a modal and moving focus.
@@ -74,11 +84,11 @@ export function AddSpendingDialog({ currency, dates, onSave, onClose }: AddSpend
 
   return (
     // onClose fires for Escape too, so every way of closing goes through the parent.
-    <dialog ref={dialogRef} className={styles.dialog} aria-labelledby="add-title" onClose={onClose}>
+    <dialog ref={dialogRef} className={styles.dialog} aria-labelledby="purchase-title" onClose={onClose}>
       <form className={styles.form} onSubmit={handleSubmit} noValidate>
         <div className={styles.titleRow}>
-          <h2 id="add-title" className={styles.title}>
-            Add spending
+          <h2 id="purchase-title" className={styles.title}>
+            {isEditing ? 'Edit purchase' : 'Add spending'}
           </h2>
           <button type="button" className={styles.close} onClick={onClose}>
             Close
@@ -189,8 +199,32 @@ export function AddSpendingDialog({ currency, dates, onSave, onClose }: AddSpend
           </select>
         </label>
 
+        {isEditing && onDelete && (
+          <div className={styles.deleteArea}>
+            {confirmingDelete ? (
+              <div className={styles.confirm} role="group" aria-labelledby="confirm-text">
+                <p id="confirm-text" className={styles.confirmText}>
+                  Delete {purchaseTitle(existing)}, <Money cents={existing.cents} currency={currency} />?
+                </p>
+                <div className={styles.confirmButtons}>
+                  <button type="button" className={styles.secondary} onClick={() => setConfirmingDelete(false)}>
+                    Cancel
+                  </button>
+                  <button type="button" className={styles.danger} onClick={() => onDelete(existing.id)}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className={styles.deleteLink} onClick={() => setConfirmingDelete(true)}>
+                Delete purchase
+              </button>
+            )}
+          </div>
+        )}
+
         <button type="submit" className={styles.save}>
-          Save purchase
+          {isEditing ? 'Save changes' : 'Save purchase'}
         </button>
       </form>
     </dialog>

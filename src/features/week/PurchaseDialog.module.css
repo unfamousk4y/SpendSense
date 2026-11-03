@@ -183,6 +183,62 @@
   border-color: var(--accent);
 }
 
+.deleteArea {
+  padding-top: 4px;
+  border-top: 1px solid var(--rule);
+}
+
+.deleteLink {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--red);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.confirm {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--red);
+  border-radius: var(--radius);
+}
+
+.confirmText {
+  margin: 0;
+  font-weight: 600;
+}
+
+.confirmButtons {
+  display: flex;
+  gap: 8px;
+}
+
+.secondary,
+.danger {
+  flex: 1;
+  min-height: 44px;
+  border-radius: var(--radius);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.secondary {
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink);
+}
+
+.danger {
+  border: 0;
+  background: var(--red);
+  color: var(--surface);
+}
+
 /* Pinned to the bottom of the sheet so it stays reachable on short phones
    without scrolling past the optional fields. */
 .save {
