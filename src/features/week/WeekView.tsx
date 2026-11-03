@@ -10,7 +10,9 @@ import type { DemoAccount } from '../../fixtures/demoWeek';
 import { Money } from '../../ui/Money';
 import { ThemeSwitch } from '../../ui/ThemeSwitch';
 import { CalculationBreakdown } from './CalculationBreakdown';
+import { moneyFlow } from '../../domain/moneyFlow';
 import { CashPanel } from './CashPanel';
+import { MoneyFlow } from './MoneyFlow';
 import { ExpandedCashView } from './ExpandedCashView';
 import { PurchaseDialog } from './PurchaseDialog';
 import { SpendingTrace } from './SpendingTrace';
@@ -198,6 +200,21 @@ export function WeekView({
                 + Add spending
               </button>
             </div>
+          </section>
+
+          <section className={styles.section} aria-labelledby="flow-heading">
+            <h2 id="flow-heading" className={styles.sectionTitle}>
+              Where this week’s allowance went
+            </h2>
+            <MoneyFlow
+              currency={currency}
+              flow={moneyFlow(account.chosenAllowanceCents, account.purchases)}
+              pulse={
+                lastAction?.verb === 'Saved'
+                  ? { key: lastAction.purchase.category ?? 'none', id: lastAction.purchase.id }
+                  : undefined
+              }
+            />
           </section>
 
           {cashPanel('cash-phone', `${styles.section} ${styles.phoneOnly}`, 'cash-heading-phone')}
