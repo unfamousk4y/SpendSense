@@ -148,3 +148,48 @@ describe('ledger: closed weeks and future dates are not editable', () => {
     expect(ledgerReducer(demoLedger, action)).toBe(demoLedger);
   });
 });
+
+describe('ledger: releasing protected savings', () => {
+  const monday = run(demoLedger, ...toMonday);
+  const release = (id: string, cents: number): LedgerAction => ({
+    type: 'releaseSavings',
+    currency: 'USD',
+    release: { id, madeOn: '2026-11-09', cents },
+  });
+
+  test('releasing 50 of 310: P 260, cash still 960, the allowance unchanged', () => {
+    const released = ledgerReducer(monday, release('r1', 5000));
+    expect(weekAccount(released, 'USD')).toMatchObject({
+      protectedCents: 26000,
+      weekStartCashCents: 96000,
+      chosenAllowanceCents: 15000,
+    });
+  });
+
+  test('a double tap records the release once', () => {
+    const once = ledgerReducer(monday, release('r1', 5000));
+    expect(ledgerReducer(once, release('r1', 5000))).toBe(once);
+  });
+
+  test('more than is protected is ignored, even if the dialog were bypassed', () => {
+    expect(ledgerReducer(monday, release('r2', 31001))).toBe(monday);
+  });
+
+  test('BSD is untouched by a USD release', () => {
+    const released = ledgerReducer(monday, release('r1', 5000));
+    expect(released.accounts.BSD).toBe(monday.accounts.BSD);
+  });
+
+  // Released money is free cash again, so the next closure is capped by more
+  // free cash and the next suggestion grows. Week of Nov 9: allowance 150,
+  // nothing spent, F = 450 + 50 = 500, so 150 is protected (P 260 + 150 = 410);
+  // then F = 960 - 410 - 200 = 350 over 14 days: floor(35000 * 7 / 14) = 17500.
+  test('the next week uses the released cash: closure 150, then a 175 suggestion', () => {
+    const nextWeek = run(monday, release('r1', 5000), ...nextDays(7));
+    expect(weekAccount(nextWeek, 'USD')).toMatchObject({
+      protectedCents: 41000,
+      recommendedAllowanceCents: 17500,
+      previousClosure: { protectedCents: 15000 },
+    });
+  });
+});

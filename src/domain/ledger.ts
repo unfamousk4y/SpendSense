@@ -13,6 +13,7 @@ import { currentAllowanceCents, recordAllowanceChange, type AllowanceChange } fr
 import { closeWeek, type WeekClosure } from './closure';
 import { addDays, mondayOf, planDays, type IsoDate } from './dates';
 import type { Currency } from './money';
+import { previewRelease, recordRelease, type SavingsRelease } from './release';
 import { addPurchaseOnce, removePurchase, updatePurchase, type Purchase } from './week';
 
 /** The allowance snapshot for one week, plus any explained changes to it. */
@@ -40,6 +41,8 @@ export type AccountLedger = {
   /** Every recorded purchase, all weeks. */
   purchases: Purchase[];
   closures: WeekClosure[];
+  /** Explicit releases of protected savings, oldest first. */
+  releases: SavingsRelease[];
 };
 
 export type Ledger = {
@@ -52,6 +55,7 @@ export type LedgerAction =
   | { type: 'updatePurchase'; currency: Currency; purchase: Purchase }
   | { type: 'deletePurchase'; currency: Currency; id: string }
   | { type: 'changeAllowance'; currency: Currency; change: AllowanceChange }
+  | { type: 'releaseSavings'; currency: Currency; release: SavingsRelease }
   | { type: 'nextDay' };
 
 /** What the week screen needs for one account. Worked out, never stored. */
@@ -107,6 +111,24 @@ export function ledgerReducer(state: Ledger, action: LedgerAction): Ledger {
         weeks: account.weeks.map((week) =>
           week.weekStart === weekStart ? { ...week, changes: recordAllowanceChange(week.changes, action.change) } : week,
         ),
+      }));
+    }
+
+    case 'releaseSavings': {
+      const account = state.accounts[action.currency];
+      // Already recorded (a double tap): nothing to check or change.
+      if (account.releases.some((release) => release.id === action.release.id)) return state;
+      // Checked here too, not only in the dialog: never release more than is protected.
+      const parts = cashParts(account, account.closures);
+      const preview = previewRelease({
+        releaseCents: action.release.cents,
+        protectedCents: parts.protectedCents,
+        freeCents: freeCashCents(parts),
+      });
+      if (preview.kind !== 'ok') return state;
+      return changeAccount(state, action.currency, (current) => ({
+        ...current,
+        releases: recordRelease(current.releases, action.release),
       }));
     }
 
@@ -220,7 +242,9 @@ function cashParts(account: AccountLedger, closures: WeekClosure[]) {
 }
 
 function protectedCents(account: AccountLedger, closures: WeekClosure[]): number {
-  return account.openingProtectedCents + closures.reduce((total, closure) => total + closure.protectedCents, 0);
+  const protectedByClosures = closures.reduce((total, closure) => total + closure.protectedCents, 0);
+  const released = account.releases.reduce((total, release) => total + release.cents, 0);
+  return account.openingProtectedCents + protectedByClosures - released;
 }
 
 function spentIn(account: AccountLedger, weekStart: IsoDate): number {

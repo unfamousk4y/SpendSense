@@ -33,6 +33,8 @@ type AdjustAllowanceDialogProps = {
   laterDays: number;
   onSave: (change: AllowanceChange) => void;
   onClose: () => void;
+  /** Present when something is protected: offered when an increase is refused. */
+  onReleaseSavings?: () => void;
 };
 
 export function AdjustAllowanceDialog({
@@ -45,6 +47,7 @@ export function AdjustAllowanceDialog({
   laterDays,
   onSave,
   onClose,
+  onReleaseSavings,
 }: AdjustAllowanceDialogProps) {
   // One id per opening of the form, reused by every Save attempt, so a double
   // tap records the change once (same idea as adding a purchase).
@@ -59,10 +62,11 @@ export function AdjustAllowanceDialog({
   // On mount: open as a modal and select the amount so typing replaces it.
   // On unmount: put focus back on the button that opened the form. The dialog
   // is removed rather than closed, so the browser would otherwise drop focus
-  // onto the page body. The focus call waits a moment because while the modal
-  // is still in the page, everything outside it ignores focus().
-  // The opener is remembered only once: in development React runs this effect
-  // twice, and by the second run focus is already in the amount box.
+  // onto the page body. The opener is remembered only once: in development
+  // React runs this effect twice, and by the second run focus is already in the
+  // amount box. By the time the cleanup runs on a real close, the dialog is
+  // already out of the page, so focusing the opener straight away works, and
+  // a form opened next (Release savings) remembers that opener in turn.
   const openerRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!openerRef.current && document.activeElement instanceof HTMLElement) {
@@ -72,7 +76,7 @@ export function AdjustAllowanceDialog({
     const dialog = dialogRef.current;
     if (dialog && !dialog.open) dialog.showModal();
     amountRef.current?.select();
-    return () => queueMicrotask(() => opener?.focus());
+    return () => opener?.focus();
   }, []);
 
   // The preview is worked out fresh from the typed text on every render, so it
@@ -197,6 +201,11 @@ export function AdjustAllowanceDialog({
               <Money cents={preview.availableCents} currency={currency} /> is free in your plan. To go higher, release
               savings or change upcoming bills first.
             </p>
+          )}
+          {preview?.kind === 'exceedsFreeCash' && onReleaseSavings && (
+            <button type="button" className={styles.useSuggestion} onClick={onReleaseSavings}>
+              Release savings
+            </button>
           )}
           {preview?.kind === 'ok' && preview.overspentCents > 0 && (
             <p className={styles.warning}>

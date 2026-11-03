@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment files hold project keys and test logins: never committed.
+# Only the example template (no real values) is tracked.
+.env
+.env.*
+!.env.test.example

@@ -28,6 +28,7 @@ export default function App() {
         onUpdatePurchase={(purchase) => dispatch({ type: 'updatePurchase', currency, purchase })}
         onDeletePurchase={(id) => dispatch({ type: 'deletePurchase', currency, id })}
         onChangeAllowance={(change) => dispatch({ type: 'changeAllowance', currency, change })}
+        onReleaseSavings={(release) => dispatch({ type: 'releaseSavings', currency, release })}
         onNextDay={() => dispatch({ type: 'nextDay' })}
       />
     </MotionProvider>

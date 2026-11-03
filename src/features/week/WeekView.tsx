@@ -11,6 +11,7 @@ import type { WeekAccount } from '../../domain/ledger';
 import { Money } from '../../ui/Money';
 import { ThemeSwitch } from '../../ui/ThemeSwitch';
 import { AdjustAllowanceDialog } from './AdjustAllowanceDialog';
+import type { SavingsRelease } from '../../domain/release';
 import { CalculationBreakdown } from './CalculationBreakdown';
 import { ClosureSummary } from './ClosureSummary';
 import { moneyFlow } from '../../domain/moneyFlow';
@@ -18,6 +19,7 @@ import { CashPanel } from './CashPanel';
 import { MoneyFlow } from './MoneyFlow';
 import { ExpandedCashView } from './ExpandedCashView';
 import { PurchaseDialog } from './PurchaseDialog';
+import { ReleaseSavingsDialog } from './ReleaseSavingsDialog';
 import { SpendingTrace } from './SpendingTrace';
 import styles from './WeekView.module.css';
 
@@ -29,12 +31,18 @@ type WeekViewProps = {
   onUpdatePurchase: (purchase: Purchase) => void;
   onDeletePurchase: (id: string) => void;
   onChangeAllowance: (change: AllowanceChange) => void;
+  onReleaseSavings: (release: SavingsRelease) => void;
   /** Demo only: move the date forward one day. */
   onNextDay: () => void;
 };
 
 /** Which form is open, if any. Editing carries the purchase being edited. */
-type DialogState = { mode: 'add' } | { mode: 'edit'; purchase: Purchase } | { mode: 'allowance' } | null;
+type DialogState =
+  | { mode: 'add' }
+  | { mode: 'edit'; purchase: Purchase }
+  | { mode: 'allowance' }
+  | { mode: 'release' }
+  | null;
 
 /**
  * The cash panel is drawn twice (below the number on phones, in the side column
@@ -47,6 +55,7 @@ type CashPanelId = 'cash-phone' | 'cash-desktop';
 type LastAction =
   | { kind: 'purchase'; verb: 'Saved' | 'Updated' | 'Deleted'; purchase: Purchase }
   | { kind: 'allowance'; change: AllowanceChange }
+  | { kind: 'release'; release: SavingsRelease }
   | null;
 
 const CURRENCIES: Currency[] = ['USD', 'BSD'];
@@ -64,6 +73,7 @@ export function WeekView({
   onUpdatePurchase,
   onDeletePurchase,
   onChangeAllowance,
+  onReleaseSavings,
   onNextDay,
 }: WeekViewProps) {
   const [dialog, setDialog] = useState<DialogState>(null);
@@ -130,6 +140,12 @@ export function WeekView({
     setDialog(null);
   }
 
+  function handleRelease(release: SavingsRelease) {
+    onReleaseSavings(release);
+    setLastAction({ kind: 'release', release });
+    setDialog(null);
+  }
+
   function handleCurrencyChange(next: Currency) {
     setLastAction(null);
     onCurrencyChange(next);
@@ -171,6 +187,7 @@ export function WeekView({
         }
       }
       onAdjust={() => setDialog({ mode: 'allowance' })}
+      onRelease={() => setDialog({ mode: 'release' })}
     />
   );
 
@@ -257,6 +274,12 @@ export function WeekView({
                 <>
                   Allowance changed from <Money cents={lastAction.change.fromCents} currency={currency} /> to{' '}
                   <Money cents={lastAction.change.toCents} currency={currency} />
+                </>
+              )}
+              {lastAction?.kind === 'release' && (
+                <>
+                  Released <Money cents={lastAction.release.cents} currency={currency} /> from protected savings. Adjust
+                  the allowance to spend it.
                 </>
               )}
             </p>
@@ -396,6 +419,18 @@ export function WeekView({
           suggestion={suggestion}
           laterDays={daysLeft - daysThisWeek}
           onSave={handleAllowanceSave}
+          onClose={() => setDialog(null)}
+          onReleaseSavings={account.protectedCents > 0 ? () => setDialog({ mode: 'release' }) : undefined}
+        />
+      )}
+      {dialog?.mode === 'release' && (
+        <ReleaseSavingsDialog
+          currency={currency}
+          today={today}
+          protectedCents={account.protectedCents}
+          freeCents={freeCents}
+          currentCashCents={currentCashCents}
+          onSave={handleRelease}
           onClose={() => setDialog(null)}
         />
       )}

@@ -16,6 +16,7 @@ type CalculationBreakdownProps = {
   /** The most recent saved change to this week's allowance, if any. */
   lastChange?: { fromCents: number; madeOnLabel: string };
   onAdjust: () => void;
+  onRelease: () => void;
 };
 
 /** The arithmetic behind the big number, written out line by line. */
@@ -79,9 +80,16 @@ export function CalculationBreakdown(props: CalculationBreakdownProps) {
         </dd>
       </dl>
 
-      <button type="button" className={styles.adjust} onClick={props.onAdjust}>
-        Adjust allowance
-      </button>
+      <div className={styles.actions}>
+        <button type="button" className={styles.adjust} onClick={props.onAdjust}>
+          Adjust allowance
+        </button>
+        {props.protectedCents > 0 && (
+          <button type="button" className={styles.adjust} onClick={props.onRelease}>
+            Release savings
+          </button>
+        )}
+      </div>
 
       <p className={styles.footnote}>
         Based only on what you have entered. Expected income is not counted until you record it as
