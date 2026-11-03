@@ -1,0 +1,111 @@
+.facts {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 16px;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.facts dt,
+.facts dd {
+  margin: 0;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.facts dd {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+}
+
+.suggestionRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hint {
+  flex: 1;
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.useSuggestion {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.message p {
+  margin: 0;
+}
+
+.warning {
+  color: var(--amber-ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.preview {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.caption {
+  padding-bottom: 6px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.preview th,
+.preview td {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.preview thead th {
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: right;
+}
+
+.preview tbody th {
+  padding-right: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.preview tbody td {
+  padding-left: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.changed {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.negative {
+  color: var(--red);
+  font-weight: 650;
+}
+
+.footnote {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+}

@@ -2,13 +2,15 @@ import { AnimatePresence } from 'motion/react';
 import { useState } from 'react';
 import { allocateCash } from '../../domain/allocation';
 import { freeCashCents } from '../../domain/allowance';
+import { midweekSuggestion, type AllowanceChange } from '../../domain/allowanceChange';
 import { categoryLabel, purchaseTitle } from '../../domain/categories';
-import { addDays, daysBetween, type IsoDate } from '../../domain/dates';
+import { addDays, daysBetween, planDays, type IsoDate } from '../../domain/dates';
 import type { Currency } from '../../domain/money';
 import { summarizeWeek, type Purchase } from '../../domain/week';
 import type { DemoAccount } from '../../fixtures/demoWeek';
 import { Money } from '../../ui/Money';
 import { ThemeSwitch } from '../../ui/ThemeSwitch';
+import { AdjustAllowanceDialog } from './AdjustAllowanceDialog';
 import { CalculationBreakdown } from './CalculationBreakdown';
 import { moneyFlow } from '../../domain/moneyFlow';
 import { CashPanel } from './CashPanel';
@@ -20,16 +22,19 @@ import styles from './WeekView.module.css';
 
 type WeekViewProps = {
   account: DemoAccount;
+  /** Saved changes to this week's allowance, oldest first. */
+  allowanceChanges: AllowanceChange[];
   weekStart: IsoDate;
   today: IsoDate;
   onCurrencyChange: (currency: Currency) => void;
   onAddPurchase: (purchase: Purchase) => void;
   onUpdatePurchase: (purchase: Purchase) => void;
   onDeletePurchase: (id: string) => void;
+  onChangeAllowance: (change: AllowanceChange) => void;
 };
 
 /** Which form is open, if any. Editing carries the purchase being edited. */
-type DialogState = { mode: 'add' } | { mode: 'edit'; purchase: Purchase } | null;
+type DialogState = { mode: 'add' } | { mode: 'edit'; purchase: Purchase } | { mode: 'allowance' } | null;
 
 /**
  * The cash panel is drawn twice (below the number on phones, in the side column
@@ -39,7 +44,10 @@ type DialogState = { mode: 'add' } | { mode: 'edit'; purchase: Purchase } | null
 type CashPanelId = 'cash-phone' | 'cash-desktop';
 
 /** What the confirmation line under the remaining amount reports. */
-type LastAction = { verb: 'Saved' | 'Updated' | 'Deleted'; purchase: Purchase } | null;
+type LastAction =
+  | { kind: 'purchase'; verb: 'Saved' | 'Updated' | 'Deleted'; purchase: Purchase }
+  | { kind: 'allowance'; change: AllowanceChange }
+  | null;
 
 const CURRENCIES: Currency[] = ['USD', 'BSD'];
 
@@ -50,12 +58,14 @@ const label = (date: IsoDate, options: Intl.DateTimeFormatOptions) =>
 
 export function WeekView({
   account,
+  allowanceChanges,
   weekStart,
   today,
   onCurrencyChange,
   onAddPurchase,
   onUpdatePurchase,
   onDeletePurchase,
+  onChangeAllowance,
 }: WeekViewProps) {
   const [dialog, setDialog] = useState<DialogState>(null);
   // Which cash panel is expanded into the focused view, if any.
@@ -90,13 +100,19 @@ export function WeekView({
   // (sort keeps the existing order of equal dates).
   const newestFirst = [...account.purchases].reverse().sort((a, b) => b.date.localeCompare(a.date));
 
+  const freeCents = freeCashCents(cashParts);
+  // A fresh suggestion for the days left this week, as a total for the week.
+  const { daysThisWeek, daysLeft } = planDays(today, account.planEndDate);
+  const suggestion = midweekSuggestion({ spentCents: summary.spentCents, freeCents, daysThisWeek, daysLeft });
+  const lastChange = allowanceChanges.at(-1);
+
   function handleSave(purchase: Purchase) {
     if (dialog?.mode === 'edit') {
       onUpdatePurchase(purchase);
-      setLastAction({ verb: 'Updated', purchase });
+      setLastAction({ kind: 'purchase', verb: 'Updated', purchase });
     } else {
       onAddPurchase(purchase);
-      setLastAction({ verb: 'Saved', purchase });
+      setLastAction({ kind: 'purchase', verb: 'Saved', purchase });
     }
     setDialog(null);
   }
@@ -104,7 +120,13 @@ export function WeekView({
   function handleDelete(id: string) {
     const deleted = account.purchases.find((purchase) => purchase.id === id);
     onDeletePurchase(id);
-    if (deleted) setLastAction({ verb: 'Deleted', purchase: deleted });
+    if (deleted) setLastAction({ kind: 'purchase', verb: 'Deleted', purchase: deleted });
+    setDialog(null);
+  }
+
+  function handleAllowanceSave(change: AllowanceChange) {
+    onChangeAllowance(change);
+    setLastAction({ kind: 'allowance', change });
     setDialog(null);
   }
 
@@ -130,12 +152,19 @@ export function WeekView({
     <CalculationBreakdown
       currency={currency}
       {...cashParts}
-      freeCashCents={freeCashCents(cashParts)}
+      freeCashCents={freeCents}
       planEndLabel={label(account.planEndDate, { month: 'short', day: 'numeric' })}
       recommendedAllowanceCents={account.recommendedAllowanceCents}
       chosenAllowanceCents={account.chosenAllowanceCents}
       spentCents={summary.spentCents}
       remainingCents={summary.remainingCents}
+      lastChange={
+        lastChange && {
+          fromCents: lastChange.fromCents,
+          madeOnLabel: label(lastChange.madeOn, { weekday: 'short', month: 'short', day: 'numeric' }),
+        }
+      }
+      onAdjust={() => setDialog({ mode: 'allowance' })}
     />
   );
 
@@ -188,10 +217,16 @@ export function WeekView({
             )}
             {/* role="status" makes screen readers announce the change without moving focus. */}
             <p className={styles.savedStatus} role="status">
-              {lastAction && (
+              {lastAction?.kind === 'purchase' && (
                 <>
                   {lastAction.verb} <Money cents={lastAction.purchase.cents} currency={currency} /> ·{' '}
                   {purchaseTitle(lastAction.purchase)}
+                </>
+              )}
+              {lastAction?.kind === 'allowance' && (
+                <>
+                  Allowance changed from <Money cents={lastAction.change.fromCents} currency={currency} /> to{' '}
+                  <Money cents={lastAction.change.toCents} currency={currency} />
                 </>
               )}
             </p>
@@ -210,7 +245,7 @@ export function WeekView({
               currency={currency}
               flow={moneyFlow(account.chosenAllowanceCents, account.purchases)}
               pulse={
-                lastAction?.verb === 'Saved'
+                lastAction?.kind === 'purchase' && lastAction.verb === 'Saved'
                   ? { key: lastAction.purchase.category ?? 'none', id: lastAction.purchase.id }
                   : undefined
               }
@@ -319,7 +354,20 @@ export function WeekView({
 
       {/* Mounted only while open, so every opening starts fresh: an empty form
           and a new id when adding, the purchase's own values and id when editing. */}
-      {dialog && (
+      {dialog?.mode === 'allowance' && (
+        <AdjustAllowanceDialog
+          currency={currency}
+          today={today}
+          currentAllowanceCents={account.chosenAllowanceCents}
+          spentCents={summary.spentCents}
+          freeCents={freeCents}
+          suggestion={suggestion}
+          laterDays={daysLeft - daysThisWeek}
+          onSave={handleAllowanceSave}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {(dialog?.mode === 'add' || dialog?.mode === 'edit') && (
         <PurchaseDialog
           // A different key per purchase makes React start a fresh form when
           // switching straight from one purchase to another.

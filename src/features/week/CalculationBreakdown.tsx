@@ -13,6 +13,9 @@ type CalculationBreakdownProps = {
   chosenAllowanceCents: number;
   spentCents: number;
   remainingCents: number;
+  /** The most recent saved change to this week's allowance, if any. */
+  lastChange?: { fromCents: number; madeOnLabel: string };
+  onAdjust: () => void;
 };
 
 /** The arithmetic behind the big number, written out line by line. */
@@ -50,6 +53,14 @@ export function CalculationBreakdown(props: CalculationBreakdownProps) {
         <dd>
           <Money cents={props.chosenAllowanceCents} currency={currency} />
         </dd>
+        {props.lastChange && (
+          <>
+            <dt className={styles.detail}>Before your change on {props.lastChange.madeOnLabel}</dt>
+            <dd className={styles.detail}>
+              <Money cents={props.lastChange.fromCents} currency={currency} />
+            </dd>
+          </>
+        )}
         <dt className={styles.detail}>Suggested at the start of the week</dt>
         <dd className={styles.detail}>
           <Money cents={props.recommendedAllowanceCents} currency={currency} />
@@ -67,6 +78,10 @@ export function CalculationBreakdown(props: CalculationBreakdownProps) {
           <Money cents={props.remainingCents} currency={currency} />
         </dd>
       </dl>
+
+      <button type="button" className={styles.adjust} onClick={props.onAdjust}>
+        Adjust allowance
+      </button>
 
       <p className={styles.footnote}>
         Based only on what you have entered. Expected income is not counted until you record it as
