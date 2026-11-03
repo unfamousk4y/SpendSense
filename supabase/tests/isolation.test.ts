@@ -1,0 +1,222 @@
+// Two different signed-in users must never read, change, delete or link to
+// each other's rows (QUALITY_REVIEW.md: "All unauthorized operations
+// denied"). Every attack below runs as user B against user A's data, through
+// the same publishable key a browser uses. Fictional data only.
+import { createClient } from '@supabase/supabase-js'
+import { afterAll, beforeAll, describe, expect, test } from 'vitest'
+import { signIn, type TestUser } from './clients.ts'
+
+let a: TestUser
+let b: TestUser
+let aAccountId: string
+let bAccountId: string
+let aPurchaseId: string
+let bPurchaseId: string
+
+const MONDAY = '2026-11-02'
+
+// Postgres error codes: 42501 = not allowed (privilege or row-level security),
+// 23503 = foreign key (the linked row does not exist for this owner),
+// 23514 = check constraint (a value outside the allowed range).
+const NOT_ALLOWED = '42501'
+const FOREIGN_KEY = '23503'
+const CHECK = '23514'
+
+async function resetOwnData(user: TestUser) {
+  // Deleting the user's accounts cascades to everything that belongs to them.
+  const { error } = await user.client.from('accounts').delete().eq('user_id', user.userId)
+  if (error) throw new Error(`Cleanup failed: ${error.message}`)
+}
+
+async function createAccount(user: TestUser): Promise<string> {
+  const { data, error } = await user.client
+    .from('accounts')
+    .insert({
+      currency: 'USD',
+      opening_date: MONDAY,
+      opening_cash_cents: 100000,
+      opening_protected_cents: 20000,
+      commitments_cents: 20000,
+      plan_end_date: '2026-11-29',
+    })
+    .select('id')
+    .single()
+  if (error) throw new Error(`Could not create a test account: ${error.message}`)
+  return data.id
+}
+
+async function createPurchase(user: TestUser, accountId: string, cents: number): Promise<string> {
+  const id = crypto.randomUUID()
+  const { error } = await user.client
+    .from('purchases')
+    .insert({ id, account_id: accountId, date: '2026-11-03', merchant: 'Fictional café', cents })
+  if (error) throw new Error(`Could not create a test purchase: ${error.message}`)
+  return id
+}
+
+beforeAll(async () => {
+  a = await signIn('A')
+  b = await signIn('B')
+  await Promise.all([resetOwnData(a), resetOwnData(b)])
+  aAccountId = await createAccount(a)
+  bAccountId = await createAccount(b)
+  aPurchaseId = await createPurchase(a, aAccountId, 450)
+  bPurchaseId = await createPurchase(b, bAccountId, 999)
+})
+
+afterAll(async () => {
+  if (a) await resetOwnData(a)
+  if (b) await resetOwnData(b)
+  await Promise.all([a?.client.auth.signOut(), b?.client.auth.signOut()])
+})
+
+describe('each user sees only their own rows', () => {
+  test('A sees exactly their own account and purchase', async () => {
+    const accounts = await a.client.from('accounts').select('id, user_id')
+    expect(accounts.error).toBeNull()
+    expect(accounts.data).toEqual([{ id: aAccountId, user_id: a.userId }])
+
+    const purchases = await a.client.from('purchases').select('id')
+    expect(purchases.data).toEqual([{ id: aPurchaseId }])
+  })
+
+  test("B asking for A's account or purchase by id gets nothing", async () => {
+    const account = await b.client.from('accounts').select('id').eq('id', aAccountId)
+    expect(account.error).toBeNull()
+    expect(account.data).toEqual([])
+
+    const purchase = await b.client.from('purchases').select('id').eq('id', aPurchaseId)
+    expect(purchase.data).toEqual([])
+  })
+
+  test('a signed-out visitor is refused outright', async () => {
+    const anon = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_PUBLISHABLE_KEY!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+    const { data, error } = await anon.from('purchases').select('id')
+    expect(data).toBeNull()
+    expect(error?.code).toBe(NOT_ALLOWED)
+  })
+})
+
+describe("B cannot change or delete A's rows", () => {
+  test("updating A's purchase changes no rows", async () => {
+    const { data, error } = await b.client.from('purchases').update({ cents: 1 }).eq('id', aPurchaseId).select('id')
+    expect(error).toBeNull()
+    expect(data).toEqual([])
+
+    const check = await a.client.from('purchases').select('cents').eq('id', aPurchaseId).single()
+    expect(check.data?.cents).toBe(450)
+  })
+
+  test("deleting A's purchase and account removes nothing", async () => {
+    const purchase = await b.client.from('purchases').delete().eq('id', aPurchaseId).select('id')
+    expect(purchase.data).toEqual([])
+    const account = await b.client.from('accounts').delete().eq('id', aAccountId).select('id')
+    expect(account.data).toEqual([])
+
+    const check = await a.client.from('purchases').select('id').eq('id', aPurchaseId)
+    expect(check.data).toEqual([{ id: aPurchaseId }])
+  })
+})
+
+describe('B cannot forge ownership or links', () => {
+  test("inserting a purchase that claims A's user_id is refused", async () => {
+    const { error } = await b.client.from('purchases').insert({
+      id: crypto.randomUUID(),
+      user_id: a.userId,
+      account_id: aAccountId,
+      date: '2026-11-03',
+      cents: 100,
+    })
+    expect(error?.code).toBe(NOT_ALLOWED)
+  })
+
+  test("inserting B's own purchase into A's account is refused", async () => {
+    const { error } = await b.client
+      .from('purchases')
+      .insert({ id: crypto.randomUUID(), account_id: aAccountId, date: '2026-11-03', cents: 100 })
+    expect(error?.code).toBe(FOREIGN_KEY)
+  })
+
+  test("moving B's purchase into A's account is refused", async () => {
+    const { error } = await b.client.from('purchases').update({ account_id: aAccountId }).eq('id', bPurchaseId)
+    expect(error?.code).toBe(FOREIGN_KEY)
+  })
+
+  test("handing B's account over to A is refused", async () => {
+    const { error } = await b.client.from('accounts').update({ user_id: a.userId }).eq('id', bAccountId)
+    expect(error?.code).toBe(NOT_ALLOWED)
+  })
+
+  test("a week plan for A's account is refused", async () => {
+    const { error } = await b.client.from('week_plans').insert({
+      account_id: aAccountId,
+      week_start: MONDAY,
+      recommended_cents: 15000,
+      starting_allowance_cents: 15000,
+    })
+    expect(error?.code).toBe(FOREIGN_KEY)
+  })
+
+  test("reusing A's purchase id is refused and does not reveal or touch A's row", async () => {
+    const { error } = await b.client
+      .from('purchases')
+      .insert({ id: aPurchaseId, account_id: bAccountId, date: '2026-11-03', cents: 100 })
+    expect(error).not.toBeNull()
+    const check = await a.client.from('purchases').select('cents').eq('id', aPurchaseId).single()
+    expect(check.data?.cents).toBe(450)
+  })
+})
+
+describe('closures and releases cannot be written from the browser yet', () => {
+  test('even for your own account, inserting a closure is refused', async () => {
+    const { error } = await b.client.from('week_closures').insert({
+      account_id: bAccountId,
+      week_start: MONDAY,
+      allowance_cents: 15000,
+      spent_cents: 0,
+      leftover_cents: 15000,
+      protected_cents: 15000,
+    })
+    expect(error?.code).toBe(NOT_ALLOWED)
+  })
+
+  test('even for your own account, inserting a release is refused', async () => {
+    const { error } = await b.client
+      .from('savings_releases')
+      .insert({ id: crypto.randomUUID(), account_id: bAccountId, made_on: MONDAY, cents: 100 })
+    expect(error?.code).toBe(NOT_ALLOWED)
+  })
+})
+
+describe('the database rejects impossible values on its own', () => {
+  test('a purchase of 0 cents', async () => {
+    const { error } = await a.client
+      .from('purchases')
+      .insert({ id: crypto.randomUUID(), account_id: aAccountId, date: '2026-11-03', cents: 0 })
+    expect(error?.code).toBe(CHECK)
+  })
+
+  test('a currency other than USD or BSD', async () => {
+    const { error } = await a.client.from('accounts').insert({
+      currency: 'EUR',
+      opening_date: MONDAY,
+      opening_cash_cents: 0,
+      opening_protected_cents: 0,
+      commitments_cents: 0,
+      plan_end_date: '2026-11-29',
+    })
+    expect(error?.code).toBe(CHECK)
+  })
+
+  test('a week plan that does not start on a Monday', async () => {
+    const { error } = await a.client.from('week_plans').insert({
+      account_id: aAccountId,
+      week_start: '2026-11-03',
+      recommended_cents: 0,
+      starting_allowance_cents: 0,
+    })
+    expect(error?.code).toBe(CHECK)
+  })
+})
