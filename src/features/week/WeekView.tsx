@@ -1,5 +1,5 @@
 import { AnimatePresence } from 'motion/react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { allocateCash } from '../../domain/allocation';
 import { freeCashCents } from '../../domain/allowance';
 import { midweekSuggestion, type AllowanceChange } from '../../domain/allowanceChange';
@@ -34,6 +34,8 @@ type WeekViewProps = {
   onReleaseSavings: (release: SavingsRelease) => void;
   /** Demo only: move the date forward one day. */
   onNextDay: () => void;
+  /** Who is signed in and a way out, shown in the footer. */
+  accountControls?: ReactNode;
 };
 
 /** Which form is open, if any. Editing carries the purchase being edited. */
@@ -75,6 +77,7 @@ export function WeekView({
   onChangeAllowance,
   onReleaseSavings,
   onNextDay,
+  accountControls,
 }: WeekViewProps) {
   const [dialog, setDialog] = useState<DialogState>(null);
   // Which cash panel is expanded into the focused view, if any.
@@ -391,6 +394,7 @@ export function WeekView({
 
       <footer className={styles.footer}>
         <ThemeSwitch />
+        {accountControls}
       </footer>
 
       {/* AnimatePresence keeps the view on screen while it shrinks back to its panel. */}
