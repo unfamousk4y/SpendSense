@@ -16,8 +16,7 @@ type CalculationBreakdownProps = {
   /** The most recent saved change to this week's allowance, if any. */
   lastChange?: { fromCents: number; madeOnLabel: string };
   onAdjust: () => void;
-  /** Left out when releases cannot be saved yet: the screen says so instead. */
-  onRelease?: () => void;
+  onRelease: () => void;
 };
 
 /** The arithmetic behind the big number, written out line by line. */
@@ -85,16 +84,12 @@ export function CalculationBreakdown(props: CalculationBreakdownProps) {
         <button type="button" className={styles.adjust} onClick={props.onAdjust}>
           Adjust allowance
         </button>
-        {props.protectedCents > 0 && props.onRelease && (
+        {props.protectedCents > 0 && (
           <button type="button" className={styles.adjust} onClick={props.onRelease}>
             Release savings
           </button>
         )}
       </div>
-
-      {!props.onRelease && (
-        <p className={styles.footnote}>Releasing savings and closing a week are not available for saved accounts yet.</p>
-      )}
 
       <p className={styles.footnote}>
         Based only on what you have entered. Expected income is not counted until you record it as

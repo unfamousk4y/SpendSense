@@ -3,9 +3,10 @@ import { useEffect, useReducer, useState, type ReactNode } from 'react';
 import {
   createAccount,
   deletePurchaseRow,
-  insertAllowanceChange,
   insertPurchase,
   loadLedger,
+  saveAllowanceChange,
+  saveRelease,
   updatePurchaseRow,
   type LoadedLedger,
   type SaveResult,
@@ -14,6 +15,7 @@ import type { AllowanceChange } from '../../domain/allowanceChange';
 import { localDateIn, mondayOf, type IsoDate } from '../../domain/dates';
 import { hasPlanThisWeek, ledgerReducer, weekAccount, type LedgerAction } from '../../domain/ledger';
 import type { Currency } from '../../domain/money';
+import type { SavingsRelease } from '../../domain/release';
 import type { Purchase } from '../../domain/week';
 import { MotionProvider } from '../../ui/MotionProvider';
 import { SetupScreen } from '../setup/SetupScreen';
@@ -163,7 +165,10 @@ function SavedWeek({ client, loaded, today, currency, onCurrencyChange, onAccoun
         }
         onDeletePurchase={(id: string) => saveThenApply(deletePurchaseRow(client, id), { type: 'deletePurchase', currency, id })}
         onChangeAllowance={(change: AllowanceChange) =>
-          saveThenApply(insertAllowanceChange(client, weekPlanId, change), { type: 'changeAllowance', currency, change })
+          saveThenApply(saveAllowanceChange(client, weekPlanId, change), { type: 'changeAllowance', currency, change })
+        }
+        onReleaseSavings={(release: SavingsRelease) =>
+          saveThenApply(saveRelease(client, accountId, release), { type: 'releaseSavings', currency, release })
         }
         accountControls={accountControls}
       />

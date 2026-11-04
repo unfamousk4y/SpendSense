@@ -10,7 +10,7 @@ import type { AllowanceChange } from '../domain/allowanceChange';
 import type { CategoryId, NeedOrWant } from '../domain/categories';
 import type { WeekClosure } from '../domain/closure';
 import type { IsoDate } from '../domain/dates';
-import { planForNewWeek, type AccountLedger, type Ledger, type WeekPlan } from '../domain/ledger';
+import { hasEndedWeekToClose, planForNewWeek, type AccountLedger, type Ledger, type WeekPlan } from '../domain/ledger';
 import type { Currency } from '../domain/money';
 import type { SavingsRelease } from '../domain/release';
 import type { Purchase } from '../domain/week';
@@ -44,12 +44,37 @@ const LOAD_FAILED = 'Could not load your account. Check your connection and try 
 const SESSION_ENDED = 'Your sign-in has expired. Reload the page and sign in again.';
 
 function saveMessage(error: PostgrestError): string {
-  // PostgREST's codes for a missing or expired session token.
-  return error.code === 'PGRST301' || error.code === 'PGRST303' ? SESSION_ENDED : SAVE_FAILED;
+  switch (error.code) {
+    // PostgREST's codes for a missing or expired session token.
+    case 'PGRST301':
+    case 'PGRST303':
+      return SESSION_ENDED;
+    // The rules in the database's checked operations. The forms check these
+    // first, so a student sees these only if another tab got there before them.
+    case 'SS001':
+      return 'That week is closed, so it can no longer be changed. Reload the page to see the latest.';
+    case 'SS002':
+      return 'That is more than is protected now. Reload the page to see the latest.';
+    case 'SS003':
+      return 'That does not fit inside your free cash now. Reload the page to see the latest.';
+    default:
+      return SAVE_FAILED;
+  }
 }
 
 export async function loadLedger(client: SupabaseClient, today: IsoDate): Promise<LoadResult> {
-  const first = await readLedger(client, today);
+  const start = await readLedger(client, today);
+  if (!start.ok) return start;
+
+  // Close any week that has ended, before planning a new one from the result.
+  // The database works out the amounts and ignores weeks already closed.
+  const toClose = Object.values(start.loaded.ledger.accounts).filter((account) => account && hasEndedWeekToClose(account, today));
+  for (const account of toClose) {
+    const accountId = account && start.loaded.accountIds[account.currency];
+    const { error } = await client.rpc('close_ended_weeks', { p_account_id: accountId, p_today: today });
+    if (error) return { ok: false, message: LOAD_FAILED };
+  }
+  const first = toClose.length > 0 ? await readLedger(client, today) : start;
   if (!first.ok) return first;
 
   // An account may have reached a week it has no plan for yet.
@@ -135,28 +160,38 @@ export async function createAccount(client: SupabaseClient, account: NewAccount)
  * to this student, it is someone else's and nothing was saved.
  */
 export async function insertPurchase(client: SupabaseClient, accountId: string, purchase: Purchase): Promise<SaveResult> {
-  return insertOnce(client, 'purchases', { id: purchase.id, account_id: accountId, ...purchaseColumns(purchase) });
-}
-
-/** Records a saved allowance change; retries are safe in the same way as purchases. */
-export async function insertAllowanceChange(client: SupabaseClient, weekPlanId: string, change: AllowanceChange): Promise<SaveResult> {
-  return insertOnce(client, 'allowance_changes', {
-    id: change.id,
-    week_plan_id: weekPlanId,
-    made_on: change.madeOn,
-    from_cents: change.fromCents,
-    to_cents: change.toCents,
-    suggested_cents: change.suggestedCents,
-  });
-}
-
-async function insertOnce(client: SupabaseClient, table: string, row: { id: string } & Record<string, unknown>): Promise<SaveResult> {
-  const { error } = await client.from(table).insert(row);
+  const { error } = await client.from('purchases').insert({ id: purchase.id, account_id: accountId, ...purchaseColumns(purchase) });
   if (!error) return { ok: true };
   if (error.code !== UNIQUE_VIOLATION) return { ok: false, message: saveMessage(error) };
 
-  const found = await client.from(table).select('id').eq('id', row.id);
+  const found = await client.from('purchases').select('id').eq('id', purchase.id);
   return !found.error && found.data.length === 1 ? { ok: true } : { ok: false, message: SAVE_FAILED };
+}
+
+/**
+ * Saves an allowance change. The database re-checks the rule and reads the
+ * "from" amount itself. Saving the same id again has nothing left to do.
+ */
+export async function saveAllowanceChange(client: SupabaseClient, weekPlanId: string, change: AllowanceChange): Promise<SaveResult> {
+  const { error } = await client.rpc('change_allowance', {
+    p_id: change.id,
+    p_week_plan_id: weekPlanId,
+    p_made_on: change.madeOn,
+    p_to_cents: change.toCents,
+    p_suggested_cents: change.suggestedCents,
+  });
+  return error ? { ok: false, message: saveMessage(error) } : { ok: true };
+}
+
+/** Saves a release of protected savings, with the same retry safety. */
+export async function saveRelease(client: SupabaseClient, accountId: string, release: SavingsRelease): Promise<SaveResult> {
+  const { error } = await client.rpc('release_savings', {
+    p_id: release.id,
+    p_account_id: accountId,
+    p_made_on: release.madeOn,
+    p_cents: release.cents,
+  });
+  return error ? { ok: false, message: saveMessage(error) } : { ok: true };
 }
 
 export async function updatePurchaseRow(client: SupabaseClient, purchase: Purchase): Promise<SaveResult> {

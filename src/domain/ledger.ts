@@ -244,6 +244,14 @@ export function hasPlanThisWeek(account: AccountLedger, today: IsoDate): boolean
   return account.weeks.some((week) => week.weekStart === mondayOf(today));
 }
 
+/** Whether a planned week has ended without being closed yet. */
+export function hasEndedWeekToClose(account: AccountLedger, today: IsoDate): boolean {
+  return account.weeks.some(
+    (week) =>
+      addDays(week.weekStart, 7) <= today && !account.closures.some((closure) => closure.weekStart === week.weekStart),
+  );
+}
+
 /**
  * The plan to create when an account reaches a week it has no plan for, or
  * null if it has one or the plan end date has passed. Days are counted from

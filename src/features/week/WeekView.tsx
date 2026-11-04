@@ -33,8 +33,7 @@ type WeekViewProps = {
   onUpdatePurchase: (purchase: Purchase) => Promise<SaveResult>;
   onDeletePurchase: (id: string) => Promise<SaveResult>;
   onChangeAllowance: (change: AllowanceChange) => Promise<SaveResult>;
-  /** Left out for saved accounts until releases can be written to the database. */
-  onReleaseSavings?: (release: SavingsRelease) => void;
+  onReleaseSavings: (release: SavingsRelease) => Promise<SaveResult>;
   /** Present only on the fictional demo: move the date forward one day. */
   onNextDay?: () => void;
   /** Who is signed in and a way out, shown in the footer. */
@@ -157,10 +156,13 @@ export function WeekView({
     return result;
   }
 
-  function handleRelease(release: SavingsRelease) {
-    onReleaseSavings?.(release);
-    setLastAction({ kind: 'release', release });
-    setDialog(null);
+  async function handleRelease(release: SavingsRelease): Promise<SaveResult> {
+    const result = await onReleaseSavings(release);
+    if (result.ok) {
+      setLastAction({ kind: 'release', release });
+      setDialog(null);
+    }
+    return result;
   }
 
   function handleCurrencyChange(next: Currency) {
@@ -204,7 +206,7 @@ export function WeekView({
         }
       }
       onAdjust={() => setDialog({ mode: 'allowance' })}
-      onRelease={onReleaseSavings && (() => setDialog({ mode: 'release' }))}
+      onRelease={() => setDialog({ mode: 'release' })}
     />
   );
 
@@ -440,7 +442,7 @@ export function WeekView({
           laterDays={daysLeft - daysThisWeek}
           onSave={handleAllowanceSave}
           onClose={() => setDialog(null)}
-          onReleaseSavings={onReleaseSavings && account.protectedCents > 0 ? () => setDialog({ mode: 'release' }) : undefined}
+          onReleaseSavings={account.protectedCents > 0 ? () => setDialog({ mode: 'release' }) : undefined}
         />
       )}
       {dialog?.mode === 'release' && (

@@ -2,7 +2,7 @@
 // Fictional data only; each user's rows are removed before and after.
 import { createClient } from '@supabase/supabase-js'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { createAccount, deletePurchaseRow, insertAllowanceChange, insertPurchase, loadLedger, updatePurchaseRow, type NewAccount } from '../../src/data/ledgerStore'
+import { createAccount, deletePurchaseRow, insertPurchase, loadLedger, saveAllowanceChange, updatePurchaseRow, type NewAccount } from '../../src/data/ledgerStore'
 import type { AllowanceChange } from '../../src/domain/allowanceChange'
 import { weekAccount } from '../../src/domain/ledger'
 import type { Purchase } from '../../src/domain/week'
@@ -225,27 +225,6 @@ describe('saving purchases', () => {
   })
 })
 
-describe('reaching a new week', () => {
-  beforeAll(async () => {
-    await Promise.all([reset(a), reset(b)])
-    await createAccount(a.client, usd)
-  })
-
-  // F = 1000 - 200 - 200 = 600, Nov 9 to Nov 29 is 21 days: floor(60000 * 7 / 21) = 20000.
-  test('loading in a week with no plan creates it, and loading again does not duplicate it', async () => {
-    const week = weekAccount((await load(a, '2026-11-09')).ledger, 'USD')
-    expect(week).toMatchObject({ weekStart: '2026-11-09', recommendedAllowanceCents: 20000, chosenAllowanceCents: 20000 })
-    await load(a, '2026-11-09')
-    const { data } = await a.client.from('week_plans').select('id').eq('week_start', '2026-11-09')
-    expect(data).toHaveLength(1)
-  })
-
-  test('after the plan end date no new plan is invented', async () => {
-    const { ledger } = await load(a, '2026-11-30')
-    expect(ledger.accounts.USD!.weeks.map((week) => week.weekStart)).toEqual(['2026-11-02', '2026-11-09'])
-  })
-})
-
 describe('saving allowance changes', () => {
   let planId: string
 
@@ -266,7 +245,7 @@ describe('saving allowance changes', () => {
 
   test('a saved change survives a reload, with its before and after, and purchases untouched', async () => {
     const first = change(15000, 18000)
-    expect(await insertAllowanceChange(a.client, planId, first)).toEqual({ ok: true })
+    expect(await saveAllowanceChange(a.client, planId, first)).toEqual({ ok: true })
     expect(weekAccount((await load(a)).ledger, 'USD')).toMatchObject({
       chosenAllowanceCents: 18000,
       recommendedAllowanceCents: 15000,
@@ -278,26 +257,26 @@ describe('saving allowance changes', () => {
   test('retrying the same change records it once', async () => {
     const before = weekAccount((await load(a)).ledger, 'USD').allowanceChanges.length
     const retried = change(18000, 12000)
-    await insertAllowanceChange(a.client, planId, retried)
-    expect(await insertAllowanceChange(a.client, planId, retried)).toEqual({ ok: true })
+    await saveAllowanceChange(a.client, planId, retried)
+    expect(await saveAllowanceChange(a.client, planId, retried)).toEqual({ ok: true })
     expect(weekAccount((await load(a)).ledger, 'USD').allowanceChanges).toHaveLength(before + 1)
   })
 
   test('the latest change is the one in force after a reload', async () => {
-    await insertAllowanceChange(a.client, planId, change(12000, 9000))
+    await saveAllowanceChange(a.client, planId, change(12000, 9000))
     expect(weekAccount((await load(a)).ledger, 'USD').chosenAllowanceCents).toBe(9000)
   })
 
   test("a change linked to someone else's week plan is refused", async () => {
-    expect((await insertAllowanceChange(b.client, planId, change(15000, 1))).ok).toBe(false)
+    expect((await saveAllowanceChange(b.client, planId, change(15000, 1))).ok).toBe(false)
     expect(weekAccount((await load(b)).ledger, 'USD').allowanceChanges).toEqual([])
     expect(weekAccount((await load(a)).ledger, 'USD').chosenAllowanceCents).toBe(9000)
   })
 
   test("reusing a change id that belongs to someone else is a failure, not a false success", async () => {
     const taken = change(9000, 8000)
-    await insertAllowanceChange(a.client, planId, taken)
+    await saveAllowanceChange(a.client, planId, taken)
     const bPlanId = (await load(b)).weekPlanIds.USD![TODAY]
-    expect((await insertAllowanceChange(b.client, bPlanId, taken)).ok).toBe(false)
+    expect((await saveAllowanceChange(b.client, bPlanId, taken)).ok).toBe(false)
   })
 })

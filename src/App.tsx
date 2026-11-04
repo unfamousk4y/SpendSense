@@ -69,7 +69,7 @@ function DemoWeek() {
         onUpdatePurchase={(purchase) => applied({ type: 'updatePurchase', currency, purchase })}
         onDeletePurchase={(id) => applied({ type: 'deletePurchase', currency, id })}
         onChangeAllowance={(change) => applied({ type: 'changeAllowance', currency, change })}
-        onReleaseSavings={(release) => dispatch({ type: 'releaseSavings', currency, release })}
+        onReleaseSavings={(release) => applied({ type: 'releaseSavings', currency, release })}
         onNextDay={() => dispatch({ type: 'nextDay' })}
       />
     </MotionProvider>

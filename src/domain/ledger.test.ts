@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { demoLedger } from '../fixtures/demoWeek';
-import { ledgerReducer, planForNewWeek, weekAccount, type Ledger, type LedgerAction } from './ledger';
+import { hasEndedWeekToClose, ledgerReducer, planForNewWeek, weekAccount, type Ledger, type LedgerAction } from './ledger';
 
 // Expected values worked out by hand. The demo starts Thu Nov 5 in the week of
 // Nov 2 with USD 1,000 opening cash, 200 protected, 200 bills, allowance 150,
@@ -241,5 +241,22 @@ describe('planForNewWeek', () => {
 
   test('after the plan end date there is nothing to plan', () => {
     expect(planForNewWeek(usd, '2026-11-30')).toBeNull();
+  });
+});
+
+describe('hasEndedWeekToClose', () => {
+  const usd = demoLedger.accounts.USD!;
+
+  test('not during the week, including its Sunday', () => {
+    expect(hasEndedWeekToClose(usd, '2026-11-08')).toBe(false);
+  });
+
+  test('from the following Monday', () => {
+    expect(hasEndedWeekToClose(usd, '2026-11-09')).toBe(true);
+  });
+
+  test('not once that week has a closure', () => {
+    const closed = run(demoLedger, ...toMonday).accounts.USD!;
+    expect(hasEndedWeekToClose(closed, '2026-11-09')).toBe(false);
   });
 });

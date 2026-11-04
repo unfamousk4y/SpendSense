@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import type { SaveResult } from '../../data/ledgerStore';
 import { parseAmount, type AmountInvalidReason } from '../../domain/amount';
 import type { IsoDate } from '../../domain/dates';
 import type { Currency } from '../../domain/money';
@@ -14,7 +15,8 @@ type ReleaseSavingsDialogProps = {
   protectedCents: number;
   freeCents: number;
   currentCashCents: number;
-  onSave: (release: SavingsRelease) => void;
+  /** Resolves when the save is confirmed or has failed. On success the parent closes the form. */
+  onSave: (release: SavingsRelease) => Promise<SaveResult>;
   onClose: () => void;
 };
 
@@ -41,6 +43,8 @@ export function ReleaseSavingsDialog({
   const [amountText, setAmountText] = useState('');
   // Set only when Release is pressed, so half-typed text is not flagged early.
   const [showProblem, setShowProblem] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const dialogRef = useRef<HTMLDialogElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
@@ -65,27 +69,43 @@ export function ReleaseSavingsDialog({
       ? previewRelease({ releaseCents: parsed.cents, protectedCents, freeCents })
       : null;
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
     if (parsed.kind !== 'ok' || preview?.kind !== 'ok') {
       setShowProblem(true);
       amountRef.current?.focus();
       return;
     }
-    onSave({ id: releaseId, madeOn: today, cents: parsed.cents });
+    setSaving(true);
+    setSaveError(null);
+    const saved = await onSave({ id: releaseId, madeOn: today, cents: parsed.cents });
+    if (!saved.ok) {
+      setSaving(false);
+      setSaveError(saved.message);
+    }
   }
 
   const tooMuch = preview?.kind === 'moreThanProtected';
   const formatProblem = parsed.kind === 'invalid' && showProblem;
 
   return (
-    <dialog ref={dialogRef} className={formStyles.dialog} aria-labelledby="release-title" onClose={onClose}>
+    <dialog
+      ref={dialogRef}
+      className={formStyles.dialog}
+      aria-labelledby="release-title"
+      onClose={onClose}
+      // Escape must not hide a save that is still on its way.
+      onCancel={(event) => {
+        if (saving) event.preventDefault();
+      }}
+    >
       <form className={formStyles.form} onSubmit={handleSubmit} noValidate>
         <div className={formStyles.titleRow}>
           <h2 id="release-title" className={formStyles.title}>
             Release protected savings
           </h2>
-          <button type="button" className={formStyles.close} onClick={onClose}>
+          <button type="button" className={formStyles.close} onClick={onClose} disabled={saving}>
             Close
           </button>
         </div>
@@ -187,8 +207,14 @@ export function ReleaseSavingsDialog({
               stays the same; adjust it afterwards if you want to spend some of it.
             </p>
 
+            {saveError && (
+              <p className={formStyles.error} role="alert">
+                {saveError}
+              </p>
+            )}
+
             <button type="submit" className={formStyles.save}>
-              Release savings
+              {saving ? 'Saving' : saveError ? 'Try again' : 'Release savings'}
             </button>
           </>
         )}
