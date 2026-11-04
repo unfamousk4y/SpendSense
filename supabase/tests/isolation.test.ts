@@ -99,6 +99,63 @@ describe('each user sees only their own rows', () => {
   })
 })
 
+describe("B cannot read A's plans, changes, closures or releases", () => {
+  // Weeks before MONDAY: the attacks below need A's MONDAY week plan to be free,
+  // and closing a week needs a date the database does not consider ahead of it.
+  const CLOSED_WEEK = '2026-10-19'
+  const OPEN_WEEK = '2026-10-26'
+
+  beforeAll(async () => {
+    const plans = await a.client
+      .from('week_plans')
+      .insert([CLOSED_WEEK, OPEN_WEEK].map((week_start) => ({
+        account_id: aAccountId,
+        week_start,
+        recommended_cents: 15000,
+        starting_allowance_cents: 15000,
+      })))
+      .select('id, week_start')
+    if (plans.error) throw new Error(`Could not create week plans: ${plans.error.message}`)
+
+    const openPlan = plans.data.find((plan) => plan.week_start === OPEN_WEEK)
+    const results = await Promise.all([
+      a.client.rpc('change_allowance', {
+        p_id: crypto.randomUUID(),
+        p_week_plan_id: openPlan?.id,
+        p_made_on: OPEN_WEEK,
+        p_to_cents: 14000,
+        p_suggested_cents: null,
+      }),
+      a.client.rpc('release_savings', {
+        p_id: crypto.randomUUID(),
+        p_account_id: aAccountId,
+        p_made_on: OPEN_WEEK,
+        p_cents: 100,
+      }),
+      a.client.rpc('close_ended_weeks', { p_account_id: aAccountId, p_today: OPEN_WEEK }),
+    ])
+    for (const { error } of results) {
+      if (error) throw new Error(`Could not create A's rows: ${error.message}`)
+    }
+  })
+
+  // B has none of these rows, so anything B gets back belongs to someone else.
+  // A's count shows the row exists: an empty result for B is not an empty table.
+  test.each([
+    ['week_plans', 2],
+    ['allowance_changes', 1],
+    ['week_closures', 1],
+    ['savings_releases', 1],
+  ])('%s', async (table, aRowCount) => {
+    const asB = await b.client.from(table).select('id')
+    expect(asB.error).toBeNull()
+    expect(asB.data).toEqual([])
+
+    const asA = await a.client.from(table).select('id')
+    expect(asA.data).toHaveLength(aRowCount)
+  })
+})
+
 describe("B cannot change or delete A's rows", () => {
   test("updating A's purchase changes no rows", async () => {
     const { data, error } = await b.client.from('purchases').update({ cents: 1 }).eq('id', aPurchaseId).select('id')
