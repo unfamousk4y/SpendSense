@@ -7,6 +7,7 @@ import { categoryLabel, purchaseTitle } from '../../domain/categories';
 import { addDays, daysBetween, planDays, type IsoDate } from '../../domain/dates';
 import type { Currency } from '../../domain/money';
 import { summarizeWeek, type Purchase } from '../../domain/week';
+import type { SaveResult } from '../../data/ledgerStore';
 import type { WeekAccount } from '../../domain/ledger';
 import { Money } from '../../ui/Money';
 import { ThemeSwitch } from '../../ui/ThemeSwitch';
@@ -27,13 +28,15 @@ type WeekViewProps = {
   account: WeekAccount;
   today: IsoDate;
   onCurrencyChange: (currency: Currency) => void;
-  onAddPurchase: (purchase: Purchase) => void;
-  onUpdatePurchase: (purchase: Purchase) => void;
-  onDeletePurchase: (id: string) => void;
-  onChangeAllowance: (change: AllowanceChange) => void;
-  onReleaseSavings: (release: SavingsRelease) => void;
-  /** Demo only: move the date forward one day. */
-  onNextDay: () => void;
+  /** Each resolves once the change is confirmed or has failed. */
+  onAddPurchase: (purchase: Purchase) => Promise<SaveResult>;
+  onUpdatePurchase: (purchase: Purchase) => Promise<SaveResult>;
+  onDeletePurchase: (id: string) => Promise<SaveResult>;
+  /** Left out for saved accounts until these can be written to the database. */
+  onChangeAllowance?: (change: AllowanceChange) => void;
+  onReleaseSavings?: (release: SavingsRelease) => void;
+  /** Present only on the fictional demo: move the date forward one day. */
+  onNextDay?: () => void;
   /** Who is signed in and a way out, shown in the footer. */
   accountControls?: ReactNode;
 };
@@ -103,10 +106,14 @@ export function WeekView({
     label(addDays(weekStart, day), { weekday: 'short', month: 'short', day: 'numeric' }),
   );
   // The entry form offers Monday through today, never a future or closed day.
+  // Nor before the account's opening date: its opening cash already reflects
+  // earlier spending.
   const entryDates = Array.from({ length: todayIndex + 1 }, (_, day) => ({
     date: addDays(weekStart, day),
     label: dayTitles[day],
-  })).reverse();
+  }))
+    .filter(({ date }) => date >= account.openingDate || date === today)
+    .reverse();
   const overspent = summary.remainingCents < 0;
   // Reverse first so that, within one day, the most recently added comes first
   // (sort keeps the existing order of equal dates).
@@ -119,32 +126,36 @@ export function WeekView({
   const lastChange = account.allowanceChanges.at(-1);
   const planEnded = today >= account.planEndDate;
 
-  function handleSave(purchase: Purchase) {
-    if (dialog?.mode === 'edit') {
-      onUpdatePurchase(purchase);
-      setLastAction({ kind: 'purchase', verb: 'Updated', purchase });
-    } else {
-      onAddPurchase(purchase);
-      setLastAction({ kind: 'purchase', verb: 'Saved', purchase });
+  // The form closes and the confirmation shows only after a confirmed save. A
+  // failure goes back to the form, which keeps what was typed.
+  async function handleSave(purchase: Purchase): Promise<SaveResult> {
+    const isEdit = dialog?.mode === 'edit';
+    const result = await (isEdit ? onUpdatePurchase(purchase) : onAddPurchase(purchase));
+    if (result.ok) {
+      setLastAction({ kind: 'purchase', verb: isEdit ? 'Updated' : 'Saved', purchase });
+      setDialog(null);
     }
-    setDialog(null);
+    return result;
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string): Promise<SaveResult> {
     const deleted = account.purchases.find((purchase) => purchase.id === id);
-    onDeletePurchase(id);
-    if (deleted) setLastAction({ kind: 'purchase', verb: 'Deleted', purchase: deleted });
-    setDialog(null);
+    const result = await onDeletePurchase(id);
+    if (result.ok) {
+      if (deleted) setLastAction({ kind: 'purchase', verb: 'Deleted', purchase: deleted });
+      setDialog(null);
+    }
+    return result;
   }
 
   function handleAllowanceSave(change: AllowanceChange) {
-    onChangeAllowance(change);
+    onChangeAllowance?.(change);
     setLastAction({ kind: 'allowance', change });
     setDialog(null);
   }
 
   function handleRelease(release: SavingsRelease) {
-    onReleaseSavings(release);
+    onReleaseSavings?.(release);
     setLastAction({ kind: 'release', release });
     setDialog(null);
   }
@@ -157,7 +168,7 @@ export function WeekView({
   function handleNextDay() {
     // The confirmation line is about the day just left behind.
     setLastAction(null);
-    onNextDay();
+    onNextDay?.();
   }
 
   const cashAllocation = allocateCash({ ...cashParts, weekRemainingCents: summary.remainingCents });
@@ -189,32 +200,34 @@ export function WeekView({
           madeOnLabel: label(lastChange.madeOn, { weekday: 'short', month: 'short', day: 'numeric' }),
         }
       }
-      onAdjust={() => setDialog({ mode: 'allowance' })}
-      onRelease={() => setDialog({ mode: 'release' })}
+      onAdjust={onChangeAllowance && (() => setDialog({ mode: 'allowance' }))}
+      onRelease={onReleaseSavings && (() => setDialog({ mode: 'release' }))}
     />
   );
 
   return (
     <div className={`${styles.page} ${expandedFrom ? styles.receded : ''}`}>
-      <div className={styles.demoBanner}>
-        <p className={styles.demoText}>
-          <strong>Demo data.</strong> These numbers are fictional. Purchases you add are kept only
-          until you close or reload this tab.
-        </p>
-        {/* Lets the demo reach the end of a week, where closure happens. */}
-        <div className={styles.demoDate}>
-          <span>
-            Demo date: <time dateTime={today}>{label(today, { weekday: 'short', month: 'short', day: 'numeric' })}</time>
-          </span>
-          {planEnded ? (
-            <span>Plan ends today</span>
-          ) : (
-            <button type="button" className={styles.nextDay} onClick={handleNextDay}>
-              Next day
-            </button>
-          )}
+      {onNextDay && (
+        <div className={styles.demoBanner}>
+          <p className={styles.demoText}>
+            <strong>Demo data.</strong> These numbers are fictional. Purchases you add are kept only
+            until you close or reload this tab.
+          </p>
+          {/* Lets the demo reach the end of a week, where closure happens. */}
+          <div className={styles.demoDate}>
+            <span>
+              Demo date: <time dateTime={today}>{label(today, { weekday: 'short', month: 'short', day: 'numeric' })}</time>
+            </span>
+            {planEnded ? (
+              <span>Plan ends today</span>
+            ) : (
+              <button type="button" className={styles.nextDay} onClick={handleNextDay}>
+                Next day
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       <header className={styles.header}>
         <div className={styles.currencySwitch} role="group" aria-label="Account currency">
@@ -413,7 +426,7 @@ export function WeekView({
 
       {/* Mounted only while open, so every opening starts fresh: an empty form
           and a new id when adding, the purchase's own values and id when editing. */}
-      {dialog?.mode === 'allowance' && (
+      {dialog?.mode === 'allowance' && onChangeAllowance && (
         <AdjustAllowanceDialog
           currency={currency}
           today={today}
@@ -424,7 +437,7 @@ export function WeekView({
           laterDays={daysLeft - daysThisWeek}
           onSave={handleAllowanceSave}
           onClose={() => setDialog(null)}
-          onReleaseSavings={account.protectedCents > 0 ? () => setDialog({ mode: 'release' }) : undefined}
+          onReleaseSavings={onReleaseSavings && account.protectedCents > 0 ? () => setDialog({ mode: 'release' }) : undefined}
         />
       )}
       {dialog?.mode === 'release' && (

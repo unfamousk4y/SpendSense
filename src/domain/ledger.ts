@@ -29,9 +29,14 @@ export type WeekPlan = {
 
 export type AccountLedger = {
   currency: Currency;
-  /** C at the start of the first planned week, before any recorded purchase. */
+  /**
+   * The date the opening amounts were true. Spending before it is already
+   * reflected in the opening cash, so purchases cannot be dated earlier.
+   */
+  openingDate: IsoDate;
+  /** C on the opening date, before any recorded purchase. */
   openingCashCents: number;
-  /** P at the start of the first planned week. Closures add to it. */
+  /** P on the opening date. Closures add to it. */
   openingProtectedCents: number;
   /** B: unpaid commitments due by the plan end date. */
   commitmentsCents: number;
@@ -47,7 +52,8 @@ export type AccountLedger = {
 
 export type Ledger = {
   today: IsoDate;
-  accounts: Record<Currency, AccountLedger>;
+  /** A student may have set up one currency or both. */
+  accounts: Partial<Record<Currency, AccountLedger>>;
 };
 
 export type LedgerAction =
@@ -65,6 +71,7 @@ export type WeekAccount = {
   weekStartCashCents: number;
   protectedCents: number;
   commitmentsCents: number;
+  openingDate: IsoDate;
   planEndDate: IsoDate;
   recommendedAllowanceCents: number;
   chosenAllowanceCents: number;
@@ -77,18 +84,22 @@ export type WeekAccount = {
 
 export function ledgerReducer(state: Ledger, action: LedgerAction): Ledger {
   switch (action.type) {
-    case 'addPurchase':
+    case 'addPurchase': {
+      const existing = state.accounts[action.currency];
       // Only today or earlier in the open week. Closed weeks are never edited.
-      if (!isOpenDate(state, action.purchase.date)) return state;
+      if (!existing || !isOpenDate(state, existing, action.purchase.date)) return state;
       return changeAccount(state, action.currency, (account) => ({
         ...account,
         purchases: addPurchaseOnce(account.purchases, action.purchase),
       }));
+    }
 
     case 'updatePurchase': {
-      const original = state.accounts[action.currency].purchases.find((p) => p.id === action.purchase.id);
+      const existing = state.accounts[action.currency];
+      const original = existing?.purchases.find((p) => p.id === action.purchase.id);
       // Both where it was and where it is moving to must be in the open week.
-      if (!original || !isOpenDate(state, original.date) || !isOpenDate(state, action.purchase.date)) return state;
+      if (!existing || !original) return state;
+      if (!isOpenDate(state, existing, original.date) || !isOpenDate(state, existing, action.purchase.date)) return state;
       return changeAccount(state, action.currency, (account) => ({
         ...account,
         purchases: updatePurchase(account.purchases, action.purchase),
@@ -96,8 +107,9 @@ export function ledgerReducer(state: Ledger, action: LedgerAction): Ledger {
     }
 
     case 'deletePurchase': {
-      const original = state.accounts[action.currency].purchases.find((p) => p.id === action.id);
-      if (!original || !isOpenDate(state, original.date)) return state;
+      const existing = state.accounts[action.currency];
+      const original = existing?.purchases.find((p) => p.id === action.id);
+      if (!existing || !original || !isOpenDate(state, existing, original.date)) return state;
       return changeAccount(state, action.currency, (account) => ({
         ...account,
         purchases: removePurchase(account.purchases, action.id),
@@ -116,6 +128,7 @@ export function ledgerReducer(state: Ledger, action: LedgerAction): Ledger {
 
     case 'releaseSavings': {
       const account = state.accounts[action.currency];
+      if (!account) return state;
       // Already recorded (a double tap): nothing to check or change.
       if (account.releases.some((release) => release.id === action.release.id)) return state;
       // Checked here too, not only in the dialog: never release more than is protected.
@@ -144,7 +157,7 @@ export function ledgerReducer(state: Ledger, action: LedgerAction): Ledger {
  */
 function advanceDay(state: Ledger): Ledger {
   // The demo stops at the earliest plan end; a new plan is out of scope.
-  const lastDay = Object.values(state.accounts)
+  const lastDay = presentAccounts(state)
     .map((account) => account.planEndDate)
     .sort()[0];
   if (state.today >= lastDay) return state;
@@ -155,8 +168,8 @@ function advanceDay(state: Ledger): Ledger {
   if (endedWeek === newWeek) return { ...state, today: tomorrow };
 
   const accounts = { ...state.accounts };
-  for (const currency of Object.keys(accounts) as Currency[]) {
-    accounts[currency] = rollOver(accounts[currency], endedWeek, newWeek);
+  for (const account of presentAccounts(state)) {
+    accounts[account.currency] = rollOver(account, endedWeek, newWeek);
   }
   return { today: tomorrow, accounts };
 }
@@ -203,6 +216,7 @@ function rollOver(account: AccountLedger, endedWeek: IsoDate, newWeek: IsoDate):
 /** The week screen's numbers for one account on the ledger's current date. */
 export function weekAccount(state: Ledger, currency: Currency): WeekAccount {
   const account = state.accounts[currency];
+  if (!account) throw new Error(`No ${currency} account in the ledger`);
   const weekStart = mondayOf(state.today);
   const plan = account.weeks.find((week) => week.weekStart === weekStart);
   if (!plan) {
@@ -215,6 +229,7 @@ export function weekAccount(state: Ledger, currency: Currency): WeekAccount {
     weekStartCashCents: account.openingCashCents - sumCents(account.purchases.filter((p) => p.date < weekStart)),
     protectedCents: protectedCents(account, account.closures),
     commitmentsCents: account.commitmentsCents,
+    openingDate: account.openingDate,
     planEndDate: account.planEndDate,
     recommendedAllowanceCents: plan.recommendedCents,
     chosenAllowanceCents: currentAllowanceCents(plan.startingAllowanceCents, plan.changes),
@@ -224,12 +239,43 @@ export function weekAccount(state: Ledger, currency: Currency): WeekAccount {
   };
 }
 
-function isOpenDate(state: Ledger, date: IsoDate): boolean {
-  return mondayOf(date) === mondayOf(state.today) && date <= state.today;
+/** Whether this account has an allowance plan for the week containing today. */
+export function hasPlanThisWeek(account: AccountLedger, today: IsoDate): boolean {
+  return account.weeks.some((week) => week.weekStart === mondayOf(today));
+}
+
+/**
+ * The plan to create when an account reaches a week it has no plan for, or
+ * null if it has one or the plan end date has passed. Days are counted from
+ * today, since the student may first open the app partway through the week.
+ */
+export function planForNewWeek(account: AccountLedger, today: IsoDate): WeekPlan | null {
+  if (hasPlanThisWeek(account, today)) return null;
+  const suggestion = suggestAllowance({
+    freeCents: freeCashCents(cashParts(account, account.closures)),
+    ...planDays(today, account.planEndDate),
+  });
+  if (suggestion.kind === 'planExpired') return null;
+  return {
+    weekStart: mondayOf(today),
+    recommendedCents: suggestion.suggestedCents,
+    startingAllowanceCents: suggestion.suggestedCents,
+    changes: [],
+  };
+}
+
+function presentAccounts(state: Ledger): AccountLedger[] {
+  return Object.values(state.accounts).filter((account): account is AccountLedger => account !== undefined);
+}
+
+function isOpenDate(state: Ledger, account: AccountLedger, date: IsoDate): boolean {
+  return mondayOf(date) === mondayOf(state.today) && date <= state.today && date >= account.openingDate;
 }
 
 function changeAccount(state: Ledger, currency: Currency, change: (account: AccountLedger) => AccountLedger): Ledger {
-  return { ...state, accounts: { ...state.accounts, [currency]: change(state.accounts[currency]) } };
+  const account = state.accounts[currency];
+  if (!account) return state;
+  return { ...state, accounts: { ...state.accounts, [currency]: change(account) } };
 }
 
 function cashParts(account: AccountLedger, closures: WeekClosure[]) {

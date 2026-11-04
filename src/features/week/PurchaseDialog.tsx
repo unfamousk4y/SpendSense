@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { parseAmount, type AmountInvalidReason } from '../../domain/amount';
 import { CATEGORIES, purchaseTitle, type CategoryId, type NeedOrWant } from '../../domain/categories';
+import type { SaveResult } from '../../data/ledgerStore';
 import type { IsoDate } from '../../domain/dates';
 import { formatCents, type Currency } from '../../domain/money';
 import type { Purchase } from '../../domain/week';
@@ -13,8 +14,9 @@ type PurchaseDialogProps = {
   dates: { date: IsoDate; label: string }[];
   /** Present when editing: the form starts filled in and offers Delete. */
   existing?: Purchase;
-  onSave: (purchase: Purchase) => void;
-  onDelete?: (id: string) => void;
+  /** Resolves when the save is confirmed or has failed. On success the parent closes the form. */
+  onSave: (purchase: Purchase) => Promise<SaveResult>;
+  onDelete?: (id: string) => Promise<SaveResult>;
   onClose: () => void;
 };
 
@@ -47,20 +49,46 @@ export function PurchaseDialog({ currency, dates, existing, onSave, onDelete, on
   const [amountError, setAmountError] = useState<AmountInvalidReason | null>(null);
   // Delete asks first, inside the form, so one mis-tap cannot remove a purchase.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // While a save is on its way the form stays open and cannot be sent again. If
+  // it fails, everything typed is still here and the student can retry, with
+  // the same id, so a save that actually got through cannot be duplicated.
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // A ref is a handle to the real browser element, for the few things React
   // does not do itself: opening a <dialog> as a modal and moving focus.
   const dialogRef = useRef<HTMLDialogElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
 
+  const openerRef = useRef<HTMLElement | null>(null);
+
   // On mount: open as a modal (dims the page, keeps keyboard focus inside,
-  // Escape closes it) and put the cursor in the amount box.
-  // The open check matters in development, where React runs effects twice.
+  // Escape closes it) and put the cursor in the amount box. On unmount: return
+  // focus to the button that opened the form.
+  // In development React runs effects twice: the open check and remembering the
+  // opener only once both exist for that reason.
   useEffect(() => {
+    if (!openerRef.current && document.activeElement instanceof HTMLElement) {
+      openerRef.current = document.activeElement;
+    }
+    const opener = openerRef.current;
     const dialog = dialogRef.current;
     if (dialog && !dialog.open) dialog.showModal();
     amountRef.current?.focus();
+    return () => opener?.focus();
   }, []);
+
+  /** Runs a save or delete; only a failure comes back here, since success closes the form. */
+  async function run(save: () => Promise<SaveResult>) {
+    if (saving) return;
+    setSaving(true);
+    setSaveError(null);
+    const result = await save();
+    if (!result.ok) {
+      setSaving(false);
+      setSaveError(result.message);
+    }
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     // Stop the browser's default "send the form and reload the page".
@@ -71,26 +99,37 @@ export function PurchaseDialog({ currency, dates, existing, onSave, onDelete, on
       amountRef.current?.focus();
       return;
     }
-    onSave({
-      id: entryId,
-      date,
-      merchant: merchant.trim(),
-      ...(note.trim() && { note: note.trim() }),
-      ...(category && { category }),
-      ...(needOrWant && { needOrWant }),
-      cents: result.cents,
-    });
+    void run(() =>
+      onSave({
+        id: entryId,
+        date,
+        merchant: merchant.trim(),
+        ...(note.trim() && { note: note.trim() }),
+        ...(category && { category }),
+        ...(needOrWant && { needOrWant }),
+        cents: result.cents,
+      }),
+    );
   }
 
   return (
     // onClose fires for Escape too, so every way of closing goes through the parent.
-    <dialog ref={dialogRef} className={styles.dialog} aria-labelledby="purchase-title" onClose={onClose}>
+    <dialog
+      ref={dialogRef}
+      className={styles.dialog}
+      aria-labelledby="purchase-title"
+      onClose={onClose}
+      // Escape must not hide a save that is still on its way.
+      onCancel={(event) => {
+        if (saving) event.preventDefault();
+      }}
+    >
       <form className={styles.form} onSubmit={handleSubmit} noValidate>
         <div className={styles.titleRow}>
           <h2 id="purchase-title" className={styles.title}>
             {isEditing ? 'Edit purchase' : 'Add spending'}
           </h2>
-          <button type="button" className={styles.close} onClick={onClose}>
+          <button type="button" className={styles.close} onClick={onClose} disabled={saving}>
             Close
           </button>
         </div>
@@ -210,8 +249,8 @@ export function PurchaseDialog({ currency, dates, existing, onSave, onDelete, on
                   <button type="button" className={styles.secondary} onClick={() => setConfirmingDelete(false)}>
                     Cancel
                   </button>
-                  <button type="button" className={styles.danger} onClick={() => onDelete(existing.id)}>
-                    Delete
+                  <button type="button" className={styles.danger} onClick={() => void run(() => onDelete(existing.id))}>
+                    {saving ? 'Deleting' : 'Delete'}
                   </button>
                 </div>
               </div>
@@ -223,8 +262,15 @@ export function PurchaseDialog({ currency, dates, existing, onSave, onDelete, on
           </div>
         )}
 
+        {/* role="alert" reads the problem out as soon as it appears. */}
+        {saveError && (
+          <p className={styles.error} role="alert">
+            {saveError}
+          </p>
+        )}
+
         <button type="submit" className={styles.save}>
-          {isEditing ? 'Save changes' : 'Save purchase'}
+          {saving ? 'Saving' : saveError ? 'Try again' : isEditing ? 'Save changes' : 'Save purchase'}
         </button>
       </form>
     </dialog>

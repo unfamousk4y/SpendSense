@@ -110,3 +110,11 @@ describe('mondayOf', () => {
     expect(mondayOf(date)).toBe(monday);
   });
 });
+
+describe('years below 100', () => {
+  test('year 0002 is a real date in year 2, not 1902', () => {
+    expect(daysBetween('0002-11-29', '0002-11-30')).toBe(1);
+    expect(addDays('0002-11-29', 1)).toBe('0002-11-30');
+    expect(daysBetween('0002-11-29', '2026-11-29')).toBeGreaterThan(700000);
+  });
+});

@@ -74,11 +74,14 @@ function dayNumber(date: IsoDate): number {
     throw new RangeError(`Expected a date like 2026-11-02 (got "${date}")`);
   }
   const [year, month, day] = match.slice(1).map(Number);
-  const ms = Date.UTC(year, month - 1, day);
+  // Not Date.UTC: it reads years 0 to 99 as 1900 to 1999, and a date box reports
+  // "0002" while the student is partway through typing 2026.
+  const check = new Date(0);
+  check.setUTCFullYear(year, month - 1, day);
+  const ms = check.getTime();
 
-  // Date.UTC quietly rolls 2026-02-30 over to March 2, so reject any date that
-  // does not come back unchanged.
-  const check = new Date(ms);
+  // This quietly rolls 2026-02-30 over to March 2, so reject any date that does
+  // not come back unchanged.
   if (
     check.getUTCFullYear() !== year ||
     check.getUTCMonth() !== month - 1 ||

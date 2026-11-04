@@ -84,6 +84,7 @@ export const demoLedger: Ledger = {
 function toLedgerAccount(account: DemoAccount): AccountLedger {
   return {
     currency: account.currency,
+    openingDate: DEMO_WEEK_START,
     openingCashCents: account.weekStartCashCents,
     openingProtectedCents: account.protectedCents,
     commitmentsCents: account.commitmentsCents,

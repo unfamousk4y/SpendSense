@@ -15,8 +15,9 @@ type CalculationBreakdownProps = {
   remainingCents: number;
   /** The most recent saved change to this week's allowance, if any. */
   lastChange?: { fromCents: number; madeOnLabel: string };
-  onAdjust: () => void;
-  onRelease: () => void;
+  /** Left out when these cannot be saved yet: the screen says so instead. */
+  onAdjust?: () => void;
+  onRelease?: () => void;
 };
 
 /** The arithmetic behind the big number, written out line by line. */
@@ -80,16 +81,22 @@ export function CalculationBreakdown(props: CalculationBreakdownProps) {
         </dd>
       </dl>
 
-      <div className={styles.actions}>
-        <button type="button" className={styles.adjust} onClick={props.onAdjust}>
-          Adjust allowance
-        </button>
-        {props.protectedCents > 0 && (
-          <button type="button" className={styles.adjust} onClick={props.onRelease}>
-            Release savings
+      {props.onAdjust ? (
+        <div className={styles.actions}>
+          <button type="button" className={styles.adjust} onClick={props.onAdjust}>
+            Adjust allowance
           </button>
-        )}
-      </div>
+          {props.protectedCents > 0 && props.onRelease && (
+            <button type="button" className={styles.adjust} onClick={props.onRelease}>
+              Release savings
+            </button>
+          )}
+        </div>
+      ) : (
+        <p className={styles.footnote}>
+          Adjusting the allowance, releasing savings and closing a week are not available for saved accounts yet.
+        </p>
+      )}
 
       <p className={styles.footnote}>
         Based only on what you have entered. Expected income is not counted until you record it as

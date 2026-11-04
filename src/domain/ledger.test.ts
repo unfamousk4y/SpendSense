@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { demoLedger } from '../fixtures/demoWeek';
-import { ledgerReducer, weekAccount, type Ledger, type LedgerAction } from './ledger';
+import { ledgerReducer, planForNewWeek, weekAccount, type Ledger, type LedgerAction } from './ledger';
 
 // Expected values worked out by hand. The demo starts Thu Nov 5 in the week of
 // Nov 2 with USD 1,000 opening cash, 200 protected, 200 bills, allowance 150,
@@ -62,8 +62,8 @@ describe('ledger: moving through the week', () => {
     const saturday = run(demoLedger, ...nextDays(2));
     const tuesday = run(saturday, ...nextDays(3));
     expect(tuesday.today).toBe('2026-11-10');
-    expect(tuesday.accounts.USD.closures).toHaveLength(1);
-    expect(tuesday.accounts.BSD.closures).toHaveLength(1);
+    expect(tuesday.accounts.USD!.closures).toHaveLength(1);
+    expect(tuesday.accounts.BSD!.closures).toHaveLength(1);
   });
 
   test('a midweek change to 180 is what closes: 140 protected, next suggestion 140', () => {
@@ -101,7 +101,7 @@ describe('ledger: moving through the week', () => {
   test('stops at the plan end date: three weeks closed by Sun Nov 29, then nothing changes', () => {
     const end = run(demoLedger, ...nextDays(24));
     expect(end.today).toBe('2026-11-29');
-    expect(end.accounts.USD.closures.map((closure) => closure.weekStart)).toEqual([
+    expect(end.accounts.USD!.closures.map((closure) => closure.weekStart)).toEqual([
       '2026-11-02',
       '2026-11-09',
       '2026-11-16',
@@ -123,7 +123,7 @@ describe('ledger: closed weeks and future dates are not editable', () => {
   });
 
   test('editing or deleting a purchase from the closed week is ignored', () => {
-    const old = monday.accounts.USD.purchases[0];
+    const old = monday.accounts.USD!.purchases[0];
     expect(ledgerReducer(monday, { type: 'updatePurchase', currency: 'USD', purchase: { ...old, cents: 1 } })).toBe(monday);
     expect(ledgerReducer(monday, { type: 'deletePurchase', currency: 'USD', id: old.id })).toBe(monday);
   });
@@ -135,7 +135,7 @@ describe('ledger: closed weeks and future dates are not editable', () => {
       purchase: { id: 'new', date: '2026-11-09', merchant: 'Café', cents: 300 },
     });
     expect(weekAccount(added, 'USD').purchases).toHaveLength(1);
-    const moved = { ...added.accounts.USD.purchases.at(-1)!, date: '2026-11-08' };
+    const moved = { ...added.accounts.USD!.purchases.at(-1)!, date: '2026-11-08' };
     expect(ledgerReducer(added, { type: 'updatePurchase', currency: 'USD', purchase: moved })).toBe(added);
   });
 
@@ -191,5 +191,55 @@ describe('ledger: releasing protected savings', () => {
       recommendedAllowanceCents: 17500,
       previousClosure: { protectedCents: 15000 },
     });
+  });
+});
+
+describe('ledger: an account set up partway through a week', () => {
+  const account = { ...demoLedger.accounts.USD!, openingDate: '2026-11-04', purchases: [] };
+  const started: Ledger = { today: '2026-11-05', accounts: { USD: account } };
+  const purchaseOn = (date: string): LedgerAction => ({
+    type: 'addPurchase',
+    currency: 'USD',
+    purchase: { id: date, date, merchant: '', cents: 100 },
+  });
+
+  test('a purchase before the opening date is ignored: the opening cash already reflects it', () => {
+    expect(ledgerReducer(started, purchaseOn('2026-11-03'))).toBe(started);
+  });
+
+  test('a purchase on the opening date is recorded', () => {
+    expect(ledgerReducer(started, purchaseOn('2026-11-04')).accounts.USD!.purchases).toHaveLength(1);
+  });
+
+  test('an account in the other currency is simply absent, and actions on it change nothing', () => {
+    expect(ledgerReducer(started, { type: 'deletePurchase', currency: 'BSD', id: 'x' })).toBe(started);
+  });
+});
+
+describe('planForNewWeek', () => {
+  const usd = demoLedger.accounts.USD!;
+
+  test('no plan needed when this week already has one', () => {
+    expect(planForNewWeek(usd, '2026-11-05')).toBeNull();
+  });
+
+  // Cash 960 (40 spent), P 200, B 200: F = 560. Mon Nov 9 to Nov 29 is 21 days.
+  // floor(56000 * 7 / 21) = 18666.
+  test('a new Monday suggests from current free cash', () => {
+    expect(planForNewWeek(usd, '2026-11-09')).toEqual({
+      weekStart: '2026-11-09',
+      recommendedCents: 18666,
+      startingAllowanceCents: 18666,
+      changes: [],
+    });
+  });
+
+  // Wed Nov 11 to Sun is 5 days; through Nov 29 is 19. floor(56000 * 5 / 19) = 14736.
+  test('first opened on a Wednesday, the week counts from today', () => {
+    expect(planForNewWeek(usd, '2026-11-11')).toMatchObject({ weekStart: '2026-11-09', recommendedCents: 14736 });
+  });
+
+  test('after the plan end date there is nothing to plan', () => {
+    expect(planForNewWeek(usd, '2026-11-30')).toBeNull();
   });
 });

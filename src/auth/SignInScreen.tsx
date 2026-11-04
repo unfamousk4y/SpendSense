@@ -71,10 +71,6 @@ export function SignInScreen({ notConfigured, onTryDemo }: SignInScreenProps) {
           </p>
         )}
 
-        <p className={styles.note}>
-          Your purchases are not saved to your account yet. After signing in you will see fictional demo numbers.
-        </p>
-
         {onTryDemo && (
           <button type="button" className={styles.demo} onClick={onTryDemo}>
             Try the demo without signing in (development only)
