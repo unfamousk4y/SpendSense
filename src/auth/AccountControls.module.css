@@ -27,3 +27,20 @@
   color: var(--red);
   font-weight: 600;
 }
+
+.explain {
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Doubled so it outranks the shared Save button's colours, hover included. */
+.danger.danger,
+.danger.danger:hover {
+  background: var(--red);
+  color: var(--surface);
+}
+
+.danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

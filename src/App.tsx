@@ -25,7 +25,7 @@ export default function App() {
         // A different student must never see the previous student's state.
         key={auth.session.user.id}
         client={supabase}
-        accountControls={<AccountControls email={auth.session.user.email ?? 'your Google account'} />}
+        accountControls={<AccountControls client={supabase} email={auth.session.user.email ?? 'your Google account'} />}
       />
     );
   }

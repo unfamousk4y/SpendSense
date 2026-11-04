@@ -135,6 +135,77 @@ async function readLedger(client: SupabaseClient, today: IsoDate): Promise<LoadR
   return { ok: true, loaded: { ledger, accountIds, weekPlanIds } };
 }
 
+const EXPORT_TABLES = ['accounts', 'purchases', 'week_plans', 'allowance_changes', 'week_closures', 'savings_releases'] as const;
+// The most rows the hosted database returns for one request by default.
+const EXPORT_PAGE_SIZE = 1000;
+
+export type OwnDataExport = {
+  format: 'spendsense-export';
+  version: 1;
+  exportedAt: string;
+  note: string;
+} & Record<(typeof EXPORT_TABLES)[number], Record<string, unknown>[]>;
+
+export type ExportResult = { ok: true; file: OwnDataExport } | { ok: false; message: string };
+
+/**
+ * Everything the signed-in student has saved, as stored. Row-level security
+ * limits every read to them, and it only reads, so no week is closed by it.
+ * Any failed read fails the whole export: a partial file could pass for a
+ * complete one.
+ */
+export async function exportOwnData(client: SupabaseClient, exportedAt: string, pageSize = EXPORT_PAGE_SIZE): Promise<ExportResult> {
+  const tables = await Promise.all(EXPORT_TABLES.map((table) => readAllRows(client, table, pageSize)));
+  const [accounts, purchases, week_plans, allowance_changes, week_closures, savings_releases] = tables;
+  if (!accounts || !purchases || !week_plans || !allowance_changes || !week_closures || !savings_releases) {
+    return { ok: false, message: 'Could not download your data. Check your connection and try again.' };
+  }
+  return {
+    ok: true,
+    file: {
+      format: 'spendsense-export',
+      version: 1,
+      exportedAt,
+      note: 'Amounts ending in _cents or named cents are whole cents: 1050 means 10.50. USD and BSD accounts are separate.',
+      accounts,
+      purchases,
+      week_plans,
+      allowance_changes,
+      week_closures,
+      savings_releases,
+    },
+  };
+}
+
+async function readAllRows(client: SupabaseClient, table: string, pageSize: number): Promise<Record<string, unknown>[] | null> {
+  const rows: Record<string, unknown>[] = [];
+  while (true) {
+    const { data, error } = await client
+      .from(table)
+      .select('*')
+      // id breaks ties, so no row can be skipped or repeated between pages.
+      .order('created_at')
+      .order('id')
+      .range(rows.length, rows.length + pageSize - 1);
+    if (error) return null;
+    // The owner's id is of no use to the student, and the file may get shared.
+    rows.push(...data.map(({ user_id: _ownerId, ...row }) => row));
+    if (data.length < pageSize) return rows;
+  }
+}
+
+/**
+ * Deletes the signed-in student's sign-in and everything saved under it, in one
+ * transaction. If the reply is lost it may already have worked, so the message
+ * does not claim otherwise; trying again is safe, with nothing left to delete.
+ */
+export async function deleteMyAccount(client: SupabaseClient): Promise<SaveResult> {
+  const { error } = await client.rpc('delete_my_account');
+  if (!error) return { ok: true };
+  const message = saveMessage(error);
+  return { ok: false, message: message === SAVE_FAILED ? 'Could not confirm your account was deleted. Check your connection and try again.' : message };
+}
+
 /** Creates the account and its first week plan in one transaction. */
 export async function createAccount(client: SupabaseClient, account: NewAccount): Promise<SaveResult> {
   const { error } = await client.rpc('create_account_with_plan', {
