@@ -6,12 +6,13 @@
 // (closing a week AND starting the next) come back as one new state, so the
 // screen can never show half of them.
 //
-// Only facts are stored: opening balances, purchases, week plans, closures.
+// Only facts are stored: opening balances, purchases, income, week plans, closures.
 // Current cash and protected savings are worked out from them when needed.
 import { freeCashCents, suggestAllowance } from './allowance';
 import { currentAllowanceCents, recordAllowanceChange, type AllowanceChange } from './allowanceChange';
 import { closeWeek, type WeekClosure } from './closure';
 import { addDays, mondayOf, planDays, type IsoDate } from './dates';
+import { addIncomeOnce, removeIncome, sumIncome, updateIncome, type IncomeReceipt } from './income';
 import type { Currency } from './money';
 import { previewRelease, recordRelease, type SavingsRelease } from './release';
 import { addPurchaseOnce, removePurchase, updatePurchase, type Purchase } from './week';
@@ -34,7 +35,7 @@ export type AccountLedger = {
    * reflected in the opening cash, so purchases cannot be dated earlier.
    */
   openingDate: IsoDate;
-  /** C on the opening date, before any recorded purchase. */
+  /** C on the opening date, before any recorded purchase or income. */
   openingCashCents: number;
   /** P on the opening date. Closures add to it. */
   openingProtectedCents: number;
@@ -45,6 +46,8 @@ export type AccountLedger = {
   weeks: WeekPlan[];
   /** Every recorded purchase, all weeks. */
   purchases: Purchase[];
+  /** Every recorded receipt of money, all weeks. */
+  income: IncomeReceipt[];
   closures: WeekClosure[];
   /** Explicit releases of protected savings, oldest first. */
   releases: SavingsRelease[];
@@ -60,6 +63,9 @@ export type LedgerAction =
   | { type: 'addPurchase'; currency: Currency; purchase: Purchase }
   | { type: 'updatePurchase'; currency: Currency; purchase: Purchase }
   | { type: 'deletePurchase'; currency: Currency; id: string }
+  | { type: 'addIncome'; currency: Currency; income: IncomeReceipt }
+  | { type: 'updateIncome'; currency: Currency; income: IncomeReceipt }
+  | { type: 'deleteIncome'; currency: Currency; id: string }
   | { type: 'changeAllowance'; currency: Currency; change: AllowanceChange }
   | { type: 'releaseSavings'; currency: Currency; release: SavingsRelease }
   | { type: 'nextDay' };
@@ -68,6 +74,7 @@ export type LedgerAction =
 export type WeekAccount = {
   currency: Currency;
   weekStart: IsoDate;
+  /** Cash at the start of Monday: this week's income and spending are not in it. */
   weekStartCashCents: number;
   protectedCents: number;
   commitmentsCents: number;
@@ -78,6 +85,8 @@ export type WeekAccount = {
   allowanceChanges: AllowanceChange[];
   /** This week's purchases only. */
   purchases: Purchase[];
+  /** This week's income only. */
+  income: IncomeReceipt[];
   /** The closure of the week just before this one, if it was closed. */
   previousClosure: WeekClosure | undefined;
 };
@@ -113,6 +122,37 @@ export function ledgerReducer(state: Ledger, action: LedgerAction): Ledger {
       return changeAccount(state, action.currency, (account) => ({
         ...account,
         purchases: removePurchase(account.purchases, action.id),
+      }));
+    }
+
+    case 'addIncome': {
+      const existing = state.accounts[action.currency];
+      // Only money already received, in the open week. Closed weeks are never edited.
+      if (!existing || !isOpenDate(state, existing, action.income.date)) return state;
+      return changeAccount(state, action.currency, (account) => ({
+        ...account,
+        income: addIncomeOnce(account.income, action.income),
+      }));
+    }
+
+    case 'updateIncome': {
+      const existing = state.accounts[action.currency];
+      const original = existing?.income.find((receipt) => receipt.id === action.income.id);
+      if (!existing || !original) return state;
+      if (!isOpenDate(state, existing, original.date) || !isOpenDate(state, existing, action.income.date)) return state;
+      return changeAccount(state, action.currency, (account) => ({
+        ...account,
+        income: updateIncome(account.income, action.income),
+      }));
+    }
+
+    case 'deleteIncome': {
+      const existing = state.accounts[action.currency];
+      const original = existing?.income.find((receipt) => receipt.id === action.id);
+      if (!existing || !original || !isOpenDate(state, existing, original.date)) return state;
+      return changeAccount(state, action.currency, (account) => ({
+        ...account,
+        income: removeIncome(account.income, action.id),
       }));
     }
 
@@ -226,7 +266,10 @@ export function weekAccount(state: Ledger, currency: Currency): WeekAccount {
   return {
     currency,
     weekStart,
-    weekStartCashCents: account.openingCashCents - sumCents(account.purchases.filter((p) => p.date < weekStart)),
+    weekStartCashCents:
+      account.openingCashCents +
+      sumIncome(account.income.filter((receipt) => receipt.date < weekStart)) -
+      sumCents(account.purchases.filter((p) => p.date < weekStart)),
     protectedCents: protectedCents(account, account.closures),
     commitmentsCents: account.commitmentsCents,
     openingDate: account.openingDate,
@@ -235,6 +278,7 @@ export function weekAccount(state: Ledger, currency: Currency): WeekAccount {
     chosenAllowanceCents: currentAllowanceCents(plan.startingAllowanceCents, plan.changes),
     allowanceChanges: plan.changes,
     purchases: account.purchases.filter((p) => mondayOf(p.date) === weekStart),
+    income: account.income.filter((receipt) => mondayOf(receipt.date) === weekStart),
     previousClosure: account.closures.find((closure) => closure.weekStart === addDays(weekStart, -7)),
   };
 }
@@ -288,8 +332,8 @@ function changeAccount(state: Ledger, currency: Currency, change: (account: Acco
 
 function cashParts(account: AccountLedger, closures: WeekClosure[]) {
   return {
-    // Every recorded purchase is on or before today, so this is current cash.
-    currentCashCents: account.openingCashCents - sumCents(account.purchases),
+    // Everything recorded is dated today or earlier, so this is current cash.
+    currentCashCents: account.openingCashCents + sumIncome(account.income) - sumCents(account.purchases),
     protectedCents: protectedCents(account, closures),
     commitmentsCents: account.commitmentsCents,
   };

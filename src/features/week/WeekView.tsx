@@ -4,6 +4,7 @@ import { allocateCash } from '../../domain/allocation';
 import { freeCashCents } from '../../domain/allowance';
 import { midweekSuggestion, type AllowanceChange } from '../../domain/allowanceChange';
 import { categoryLabel, purchaseTitle } from '../../domain/categories';
+import { sumIncome, type IncomeReceipt } from '../../domain/income';
 import { addDays, daysBetween, planDays, type IsoDate } from '../../domain/dates';
 import type { Currency } from '../../domain/money';
 import { summarizeWeek, type Purchase } from '../../domain/week';
@@ -14,6 +15,7 @@ import { ThemeSwitch } from '../../ui/ThemeSwitch';
 import { AdjustAllowanceDialog } from './AdjustAllowanceDialog';
 import type { SavingsRelease } from '../../domain/release';
 import { CalculationBreakdown } from './CalculationBreakdown';
+import { IncomeDialog } from './IncomeDialog';
 import { ClosureSummary } from './ClosureSummary';
 import { moneyFlow } from '../../domain/moneyFlow';
 import { CashPanel } from './CashPanel';
@@ -32,6 +34,9 @@ type WeekViewProps = {
   onAddPurchase: (purchase: Purchase) => Promise<SaveResult>;
   onUpdatePurchase: (purchase: Purchase) => Promise<SaveResult>;
   onDeletePurchase: (id: string) => Promise<SaveResult>;
+  onAddIncome: (income: IncomeReceipt) => Promise<SaveResult>;
+  onUpdateIncome: (income: IncomeReceipt) => Promise<SaveResult>;
+  onDeleteIncome: (id: string) => Promise<SaveResult>;
   onChangeAllowance: (change: AllowanceChange) => Promise<SaveResult>;
   onReleaseSavings: (release: SavingsRelease) => Promise<SaveResult>;
   /** Present only on the fictional demo: move the date forward one day. */
@@ -44,6 +49,8 @@ type WeekViewProps = {
 type DialogState =
   | { mode: 'add' }
   | { mode: 'edit'; purchase: Purchase }
+  | { mode: 'addIncome' }
+  | { mode: 'editIncome'; income: IncomeReceipt }
   | { mode: 'allowance' }
   | { mode: 'release' }
   | null;
@@ -58,6 +65,7 @@ type CashPanelId = 'cash-phone' | 'cash-desktop';
 /** What the confirmation line under the remaining amount reports. */
 type LastAction =
   | { kind: 'purchase'; verb: 'Saved' | 'Updated' | 'Deleted'; purchase: Purchase }
+  | { kind: 'income'; verb: 'Recorded' | 'Updated' | 'Deleted'; income: IncomeReceipt }
   | { kind: 'allowance'; change: AllowanceChange }
   | { kind: 'release'; release: SavingsRelease }
   | null;
@@ -76,6 +84,9 @@ export function WeekView({
   onAddPurchase,
   onUpdatePurchase,
   onDeletePurchase,
+  onAddIncome,
+  onUpdateIncome,
+  onDeleteIncome,
   onChangeAllowance,
   onReleaseSavings,
   onNextDay,
@@ -89,8 +100,8 @@ export function WeekView({
 
   const { currency, weekStart } = account;
   const summary = summarizeWeek(weekStart, account.chosenAllowanceCents, account.purchases);
-  // Derived, never stored: cash on Monday minus everything spent since.
-  const currentCashCents = account.weekStartCashCents - summary.spentCents;
+  // Derived, never stored: cash on Monday, plus income since, minus spending since.
+  const currentCashCents = account.weekStartCashCents + sumIncome(account.income) - summary.spentCents;
   const cashParts = {
     currentCashCents,
     protectedCents: account.protectedCents,
@@ -117,6 +128,7 @@ export function WeekView({
   // Reverse first so that, within one day, the most recently added comes first
   // (sort keeps the existing order of equal dates).
   const newestFirst = [...account.purchases].reverse().sort((a, b) => b.date.localeCompare(a.date));
+  const incomeNewestFirst = [...account.income].reverse().sort((a, b) => b.date.localeCompare(a.date));
 
   const freeCents = freeCashCents(cashParts);
   // A fresh suggestion for the days left this week, as a total for the week.
@@ -142,6 +154,25 @@ export function WeekView({
     const result = await onDeletePurchase(id);
     if (result.ok) {
       if (deleted) setLastAction({ kind: 'purchase', verb: 'Deleted', purchase: deleted });
+      setDialog(null);
+    }
+    return result;
+  }
+
+  async function handleIncomeSave(income: IncomeReceipt): Promise<SaveResult> {
+    const isEdit = dialog?.mode === 'editIncome';
+    const result = await (isEdit ? onUpdateIncome(income) : onAddIncome(income));
+    if (result.ok) {
+      setLastAction({ kind: 'income', verb: isEdit ? 'Updated' : 'Recorded', income });
+      setDialog(null);
+    }
+    return result;
+  }
+
+  async function handleIncomeDelete(income: IncomeReceipt): Promise<SaveResult> {
+    const result = await onDeleteIncome(income.id);
+    if (result.ok) {
+      setLastAction({ kind: 'income', verb: 'Deleted', income });
       setDialog(null);
     }
     return result;
@@ -291,6 +322,12 @@ export function WeekView({
                   {purchaseTitle(lastAction.purchase)}
                 </>
               )}
+              {lastAction?.kind === 'income' && (
+                <>
+                  {lastAction.verb} <Money cents={lastAction.income.cents} currency={currency} /> of income. Your
+                  allowance has not changed; adjust it if you want to.
+                </>
+              )}
               {lastAction?.kind === 'allowance' && (
                 <>
                   Allowance changed from <Money cents={lastAction.change.fromCents} currency={currency} /> to{' '}
@@ -392,6 +429,41 @@ export function WeekView({
             )}
           </section>
 
+          <section className={styles.section} aria-labelledby="income-heading">
+            <h2 id="income-heading" className={styles.sectionTitle}>
+              Income this week
+            </h2>
+            {incomeNewestFirst.length === 0 ? (
+              <p className={styles.empty}>No income recorded this week.</p>
+            ) : (
+              <ul className={styles.activity}>
+                {incomeNewestFirst.map((income) => (
+                  <li key={income.id}>
+                    <button
+                      type="button"
+                      className={styles.activityRow}
+                      onClick={() => setDialog({ mode: 'editIncome', income })}
+                    >
+                      <time className={styles.activityDay} dateTime={income.date}>
+                        {label(income.date, { weekday: 'short' })}
+                      </time>
+                      <span className={styles.merchant}>{income.source || 'Income'}</span>
+                      <span className={styles.amount}>
+                        <Money cents={income.cents} currency={currency} />
+                      </span>
+                      <span className={styles.editHint} aria-hidden="true">
+                        Edit
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button type="button" className={styles.addIncome} onClick={() => setDialog({ mode: 'addIncome' })}>
+              + Add income
+            </button>
+          </section>
+
           <details className={`${styles.section} ${styles.phoneOnly}`}>
             <summary className={styles.summary}>How this is calculated</summary>
             {breakdown}
@@ -453,6 +525,23 @@ export function WeekView({
           freeCents={freeCents}
           currentCashCents={currentCashCents}
           onSave={handleRelease}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {(dialog?.mode === 'addIncome' || dialog?.mode === 'editIncome') && (
+        <IncomeDialog
+          key={dialog.mode === 'editIncome' ? dialog.income.id : 'add'}
+          currency={currency}
+          dates={entryDates}
+          existing={dialog.mode === 'editIncome' ? dialog.income : undefined}
+          currentCashCents={currentCashCents}
+          freeCents={freeCents}
+          spentCents={summary.spentCents}
+          allowanceCents={account.chosenAllowanceCents}
+          daysThisWeek={daysThisWeek}
+          daysLeft={daysLeft}
+          onSave={handleIncomeSave}
+          onDelete={handleIncomeDelete}
           onClose={() => setDialog(null)}
         />
       )}

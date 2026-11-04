@@ -2,11 +2,14 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { useEffect, useReducer, useState, type ReactNode } from 'react';
 import {
   createAccount,
+  deleteIncomeRow,
   deletePurchaseRow,
+  insertIncome,
   insertPurchase,
   loadLedger,
   saveAllowanceChange,
   saveRelease,
+  updateIncomeRow,
   updatePurchaseRow,
   type LoadedLedger,
   type SaveResult,
@@ -14,6 +17,7 @@ import {
 import type { AllowanceChange } from '../../domain/allowanceChange';
 import { localDateIn, mondayOf, type IsoDate } from '../../domain/dates';
 import { hasPlanThisWeek, ledgerReducer, weekAccount, type LedgerAction } from '../../domain/ledger';
+import type { IncomeReceipt } from '../../domain/income';
 import type { Currency } from '../../domain/money';
 import type { SavingsRelease } from '../../domain/release';
 import type { Purchase } from '../../domain/week';
@@ -164,6 +168,13 @@ function SavedWeek({ client, loaded, today, currency, onCurrencyChange, onAccoun
           saveThenApply(updatePurchaseRow(client, purchase), { type: 'updatePurchase', currency, purchase })
         }
         onDeletePurchase={(id: string) => saveThenApply(deletePurchaseRow(client, id), { type: 'deletePurchase', currency, id })}
+        onAddIncome={(income: IncomeReceipt) =>
+          saveThenApply(insertIncome(client, accountId, income), { type: 'addIncome', currency, income })
+        }
+        onUpdateIncome={(income: IncomeReceipt) =>
+          saveThenApply(updateIncomeRow(client, income), { type: 'updateIncome', currency, income })
+        }
+        onDeleteIncome={(id: string) => saveThenApply(deleteIncomeRow(client, id), { type: 'deleteIncome', currency, id })}
         onChangeAllowance={(change: AllowanceChange) =>
           saveThenApply(saveAllowanceChange(client, weekPlanId, change), { type: 'changeAllowance', currency, change })
         }

@@ -10,6 +10,7 @@ import type { AllowanceChange } from '../domain/allowanceChange';
 import type { CategoryId, NeedOrWant } from '../domain/categories';
 import type { WeekClosure } from '../domain/closure';
 import type { IsoDate } from '../domain/dates';
+import type { IncomeReceipt } from '../domain/income';
 import { hasEndedWeekToClose, planForNewWeek, type AccountLedger, type Ledger, type WeekPlan } from '../domain/ledger';
 import type { Currency } from '../domain/money';
 import type { SavingsRelease } from '../domain/release';
@@ -61,6 +62,8 @@ function saveMessage(error: PostgrestError): string {
       return 'That is more than is protected now. Reload the page to see the latest.';
     case 'SS003':
       return 'That does not fit inside your free cash now. Reload the page to see the latest.';
+    case 'SS004':
+      return 'Income can only be recorded once it has been received.';
     default:
       return SAVE_FAILED;
   }
@@ -108,15 +111,16 @@ export async function loadLedger(client: SupabaseClient, today: IsoDate): Promis
 
 async function readLedger(client: SupabaseClient, today: IsoDate): Promise<LoadResult> {
   // Row-level security limits every one of these to the signed-in student.
-  const [accounts, purchases, plans, changes, closures, releases] = await Promise.all([
+  const [accounts, purchases, income, plans, changes, closures, releases] = await Promise.all([
     readAllRows(client, 'accounts'),
     readAllRows(client, 'purchases'),
+    readAllRows(client, 'income_receipts'),
     readAllRows(client, 'week_plans', 'week_start'),
     readAllRows(client, 'allowance_changes'),
     readAllRows(client, 'week_closures', 'week_start'),
     readAllRows(client, 'savings_releases'),
   ]);
-  if (!accounts || !purchases || !plans || !changes || !closures || !releases) {
+  if (!accounts || !purchases || !income || !plans || !changes || !closures || !releases) {
     return { ok: false, message: LOAD_FAILED };
   }
 
@@ -131,6 +135,7 @@ async function readLedger(client: SupabaseClient, today: IsoDate): Promise<LoadR
     );
     ledger.accounts[currency] = toAccount(row, {
       purchases: purchases.filter((p) => p.account_id === row.id).map(toPurchase),
+      income: income.filter((receipt) => receipt.account_id === row.id).map(toIncome),
       weeks: plans.filter((plan) => plan.account_id === row.id).map((plan) => toWeekPlan(plan, changes)),
       closures: closures.filter((c) => c.account_id === row.id).map((c) => toClosure(c, currency)),
       releases: releases.filter((r) => r.account_id === row.id).map(toRelease),
@@ -142,7 +147,7 @@ async function readLedger(client: SupabaseClient, today: IsoDate): Promise<LoadR
 // The most rows the hosted database returns for one request by default.
 const ROWS_PER_REQUEST = 1000;
 
-const EXPORT_TABLES = ['accounts', 'purchases', 'week_plans', 'allowance_changes', 'week_closures', 'savings_releases'] as const;
+const EXPORT_TABLES = ['accounts', 'purchases', 'income_receipts', 'week_plans', 'allowance_changes', 'week_closures', 'savings_releases'] as const;
 
 export type OwnDataExport = {
   format: 'spendsense-export';
@@ -161,8 +166,8 @@ export type ExportResult = { ok: true; file: OwnDataExport } | { ok: false; mess
  */
 export async function exportOwnData(client: SupabaseClient, exportedAt: string, pageSize = ROWS_PER_REQUEST): Promise<ExportResult> {
   const tables = await Promise.all(EXPORT_TABLES.map((table) => readAllRows(client, table, 'created_at', pageSize)));
-  const [accounts, purchases, week_plans, allowance_changes, week_closures, savings_releases] = tables;
-  if (!accounts || !purchases || !week_plans || !allowance_changes || !week_closures || !savings_releases) {
+  const [accounts, purchases, income_receipts, week_plans, allowance_changes, week_closures, savings_releases] = tables;
+  if (!accounts || !purchases || !income_receipts || !week_plans || !allowance_changes || !week_closures || !savings_releases) {
     return { ok: false, message: 'Could not download your data. Check your connection and try again.' };
   }
   return {
@@ -174,6 +179,7 @@ export async function exportOwnData(client: SupabaseClient, exportedAt: string, 
       note: 'Amounts ending in _cents or named cents are whole cents: 1050 means 10.50. USD and BSD accounts are separate.',
       accounts,
       purchases,
+      income_receipts,
       week_plans,
       allowance_changes,
       week_closures,
@@ -240,11 +246,20 @@ export async function createAccount(client: SupabaseClient, account: NewAccount)
  * to this student, it is someone else's and nothing was saved.
  */
 export async function insertPurchase(client: SupabaseClient, accountId: string, purchase: Purchase): Promise<SaveResult> {
-  const { error } = await client.from('purchases').insert({ id: purchase.id, account_id: accountId, ...purchaseColumns(purchase) });
+  return insertOnce(client, 'purchases', { id: purchase.id, account_id: accountId, ...purchaseColumns(purchase) });
+}
+
+/** Saves received income, with the same retry safety as a new purchase. */
+export async function insertIncome(client: SupabaseClient, accountId: string, income: IncomeReceipt): Promise<SaveResult> {
+  return insertOnce(client, 'income_receipts', { id: income.id, account_id: accountId, ...incomeColumns(income) });
+}
+
+async function insertOnce(client: SupabaseClient, table: string, row: { id: string } & Row): Promise<SaveResult> {
+  const { error } = await client.from(table).insert(row);
   if (!error) return { ok: true };
   if (error.code !== UNIQUE_VIOLATION) return { ok: false, message: saveMessage(error) };
 
-  const found = await client.from('purchases').select('id').eq('id', purchase.id);
+  const found = await client.from(table).select('id').eq('id', row.id);
   return !found.error && found.data.length === 1 ? { ok: true } : { ok: false, message: SAVE_FAILED };
 }
 
@@ -286,6 +301,27 @@ export async function deletePurchaseRow(client: SupabaseClient, id: string): Pro
   return error ? { ok: false, message: saveMessage(error) } : { ok: true };
 }
 
+export async function updateIncomeRow(client: SupabaseClient, income: IncomeReceipt): Promise<SaveResult> {
+  const { data, error } = await client.from('income_receipts').update(incomeColumns(income)).eq('id', income.id).select('id');
+  if (error) return { ok: false, message: saveMessage(error) };
+  return data.length === 1 ? { ok: true } : { ok: false, message: 'That entry no longer exists. Reload the page to see the latest.' };
+}
+
+/** Deleting something already gone is a success, as with purchases. */
+export async function deleteIncomeRow(client: SupabaseClient, id: string): Promise<SaveResult> {
+  const { error } = await client.from('income_receipts').delete().eq('id', id);
+  return error ? { ok: false, message: saveMessage(error) } : { ok: true };
+}
+
+function incomeColumns(income: IncomeReceipt) {
+  return {
+    received_on: income.date,
+    // null, not undefined: clearing the source on an edit must clear it in the row.
+    source: income.source ?? null,
+    cents: income.cents,
+  };
+}
+
 function purchaseColumns(purchase: Purchase) {
   return {
     date: purchase.date,
@@ -301,7 +337,7 @@ function purchaseColumns(purchase: Purchase) {
 // Rows arrive untyped until generated database types are worth adding. These
 // functions are the one place that knows the column names.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function toAccount(row: any, parts: Pick<AccountLedger, 'purchases' | 'weeks' | 'closures' | 'releases'>): AccountLedger {
+function toAccount(row: any, parts: Pick<AccountLedger, 'purchases' | 'income' | 'weeks' | 'closures' | 'releases'>): AccountLedger {
   return {
     currency: row.currency,
     openingDate: row.opening_date,
@@ -322,6 +358,15 @@ function toPurchase(row: any): Purchase {
     ...(row.category !== null && { category: row.category as CategoryId }),
     ...(row.need_or_want !== null && { needOrWant: row.need_or_want as NeedOrWant }),
     cents: row.cents,
+  };
+}
+
+function toIncome(row: any): IncomeReceipt {
+  return {
+    id: row.id,
+    date: row.received_on,
+    cents: row.cents,
+    ...(row.source !== null && { source: row.source as string }),
   };
 }
 

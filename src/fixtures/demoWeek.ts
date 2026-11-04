@@ -98,6 +98,7 @@ function toLedgerAccount(account: DemoAccount): AccountLedger {
       },
     ],
     purchases: account.purchases,
+    income: [],
     closures: [],
     releases: [],
   };

@@ -4,12 +4,12 @@
 // project (development only). Fictional data only.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { createAccount, deleteMyAccount, insertPurchase, loadLedger, saveAllowanceChange, saveRelease } from '../../src/data/ledgerStore'
+import { createAccount, deleteMyAccount, insertIncome, insertPurchase, loadLedger, saveAllowanceChange, saveRelease } from '../../src/data/ledgerStore'
 import { signIn, type TestUser } from './clients.ts'
 
 const WEEK_1 = '2026-10-19'
 const WEEK_2 = '2026-10-26'
-const TABLES = ['accounts', 'purchases', 'week_plans', 'allowance_changes', 'week_closures', 'savings_releases']
+const TABLES = ['accounts', 'purchases', 'income_receipts', 'week_plans', 'allowance_changes', 'week_closures', 'savings_releases']
 
 function newClient(): SupabaseClient {
   return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_PUBLISHABLE_KEY!, {
@@ -47,6 +47,9 @@ async function fillAccount(client: SupabaseClient) {
   // Dated in week 1, which closes below: the purchase guard must still let it go.
   const closedPurchase = await insertPurchase(client, accountId, { id: crypto.randomUUID(), date: WEEK_1, merchant: 'Fictional café', cents: 450 })
   if (!closedPurchase.ok) throw new Error(closedPurchase.message)
+  // Income in the same week: its guard must let it go too.
+  const closedIncome = await insertIncome(client, accountId, { id: crypto.randomUUID(), date: WEEK_1, cents: 5000 })
+  if (!closedIncome.ok) throw new Error(closedIncome.message)
 
   const second = await loadLedger(client, WEEK_2)
   if (!second.ok) throw new Error(second.message)
@@ -64,8 +67,8 @@ async function fillAccount(client: SupabaseClient) {
   if (!release.ok) throw new Error(release.message)
 }
 
-const FULL_ACCOUNT = { accounts: 1, purchases: 2, week_plans: 2, allowance_changes: 1, week_closures: 1, savings_releases: 1 }
-const NOTHING = { accounts: 0, purchases: 0, week_plans: 0, allowance_changes: 0, week_closures: 0, savings_releases: 0 }
+const FULL_ACCOUNT = { accounts: 1, purchases: 2, income_receipts: 1, week_plans: 2, allowance_changes: 1, week_closures: 1, savings_releases: 1 }
+const NOTHING = { accounts: 0, purchases: 0, income_receipts: 0, week_plans: 0, allowance_changes: 0, week_closures: 0, savings_releases: 0 }
 
 let b: TestUser
 
