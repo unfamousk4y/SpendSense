@@ -25,6 +25,10 @@ export type LoadedLedger = {
   weekPlanIds: Partial<Record<Currency, Record<IsoDate, string>>>;
 };
 
+// Rows arrive untyped until generated database types are worth adding.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Row = Record<string, any>;
+
 export type LoadResult = { ok: true; loaded: LoadedLedger } | { ok: false; message: string };
 
 export type NewAccount = {
@@ -105,39 +109,40 @@ export async function loadLedger(client: SupabaseClient, today: IsoDate): Promis
 async function readLedger(client: SupabaseClient, today: IsoDate): Promise<LoadResult> {
   // Row-level security limits every one of these to the signed-in student.
   const [accounts, purchases, plans, changes, closures, releases] = await Promise.all([
-    client.from('accounts').select('*'),
-    client.from('purchases').select('*').order('created_at'),
-    client.from('week_plans').select('*').order('week_start'),
-    client.from('allowance_changes').select('*').order('created_at'),
-    client.from('week_closures').select('*').order('week_start'),
-    client.from('savings_releases').select('*').order('created_at'),
+    readAllRows(client, 'accounts'),
+    readAllRows(client, 'purchases'),
+    readAllRows(client, 'week_plans', 'week_start'),
+    readAllRows(client, 'allowance_changes'),
+    readAllRows(client, 'week_closures', 'week_start'),
+    readAllRows(client, 'savings_releases'),
   ]);
-  if (accounts.error || purchases.error || plans.error || changes.error || closures.error || releases.error) {
+  if (!accounts || !purchases || !plans || !changes || !closures || !releases) {
     return { ok: false, message: LOAD_FAILED };
   }
 
   const ledger: Ledger = { today, accounts: {} };
   const accountIds: LoadedLedger['accountIds'] = {};
   const weekPlanIds: LoadedLedger['weekPlanIds'] = {};
-  for (const row of accounts.data) {
+  for (const row of accounts) {
     const currency: Currency = row.currency;
     accountIds[currency] = row.id;
     weekPlanIds[currency] = Object.fromEntries(
-      plans.data.filter((plan) => plan.account_id === row.id).map((plan) => [plan.week_start, plan.id]),
+      plans.filter((plan) => plan.account_id === row.id).map((plan) => [plan.week_start, plan.id]),
     );
     ledger.accounts[currency] = toAccount(row, {
-      purchases: purchases.data.filter((p) => p.account_id === row.id).map(toPurchase),
-      weeks: plans.data.filter((plan) => plan.account_id === row.id).map((plan) => toWeekPlan(plan, changes.data)),
-      closures: closures.data.filter((c) => c.account_id === row.id).map((c) => toClosure(c, currency)),
-      releases: releases.data.filter((r) => r.account_id === row.id).map(toRelease),
+      purchases: purchases.filter((p) => p.account_id === row.id).map(toPurchase),
+      weeks: plans.filter((plan) => plan.account_id === row.id).map((plan) => toWeekPlan(plan, changes)),
+      closures: closures.filter((c) => c.account_id === row.id).map((c) => toClosure(c, currency)),
+      releases: releases.filter((r) => r.account_id === row.id).map(toRelease),
     });
   }
   return { ok: true, loaded: { ledger, accountIds, weekPlanIds } };
 }
 
-const EXPORT_TABLES = ['accounts', 'purchases', 'week_plans', 'allowance_changes', 'week_closures', 'savings_releases'] as const;
 // The most rows the hosted database returns for one request by default.
-const EXPORT_PAGE_SIZE = 1000;
+const ROWS_PER_REQUEST = 1000;
+
+const EXPORT_TABLES = ['accounts', 'purchases', 'week_plans', 'allowance_changes', 'week_closures', 'savings_releases'] as const;
 
 export type OwnDataExport = {
   format: 'spendsense-export';
@@ -154,8 +159,8 @@ export type ExportResult = { ok: true; file: OwnDataExport } | { ok: false; mess
  * Any failed read fails the whole export: a partial file could pass for a
  * complete one.
  */
-export async function exportOwnData(client: SupabaseClient, exportedAt: string, pageSize = EXPORT_PAGE_SIZE): Promise<ExportResult> {
-  const tables = await Promise.all(EXPORT_TABLES.map((table) => readAllRows(client, table, pageSize)));
+export async function exportOwnData(client: SupabaseClient, exportedAt: string, pageSize = ROWS_PER_REQUEST): Promise<ExportResult> {
+  const tables = await Promise.all(EXPORT_TABLES.map((table) => readAllRows(client, table, 'created_at', pageSize)));
   const [accounts, purchases, week_plans, allowance_changes, week_closures, savings_releases] = tables;
   if (!accounts || !purchases || !week_plans || !allowance_changes || !week_closures || !savings_releases) {
     return { ok: false, message: 'Could not download your data. Check your connection and try again.' };
@@ -177,14 +182,18 @@ export async function exportOwnData(client: SupabaseClient, exportedAt: string, 
   };
 }
 
-async function readAllRows(client: SupabaseClient, table: string, pageSize: number): Promise<Record<string, unknown>[] | null> {
-  const rows: Record<string, unknown>[] = [];
+/**
+ * Every row of a table, across as many requests as it takes. Stopping at the
+ * first request would quietly leave money out of the totals. null if any fails.
+ */
+async function readAllRows(client: SupabaseClient, table: string, orderBy = 'created_at', pageSize = ROWS_PER_REQUEST): Promise<Row[] | null> {
+  const rows: Row[] = [];
   while (true) {
     const { data, error } = await client
       .from(table)
       .select('*')
       // id breaks ties, so no row can be skipped or repeated between pages.
-      .order('created_at')
+      .order(orderBy)
       .order('id')
       .range(rows.length, rows.length + pageSize - 1);
     if (error) return null;

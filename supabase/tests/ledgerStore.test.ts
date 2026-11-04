@@ -223,6 +223,20 @@ describe('saving purchases', () => {
     expect(week.weekStartCashCents - week.purchases.reduce((total, p) => total + p.cents, 0)).toBe(96000)
     for (const purchase of ids) await deletePurchaseRow(a.client, purchase.id)
   })
+
+  // The hosted database returns a limited number of rows per request. Stopping
+  // there would quietly leave purchases out of the money the screen shows.
+  test('every purchase counts past one page of rows: 1,005 purchases of 1 cent', async () => {
+    const rows = Array.from({ length: 1005 }, () => ({ id: crypto.randomUUID(), account_id: accountId, date: TODAY, cents: 1 }))
+    const { error } = await a.client.from('purchases').insert(rows)
+    expect(error).toBeNull()
+
+    const week = weekAccount((await load(a)).ledger, 'USD')
+    expect(week.purchases).toHaveLength(1005)
+    expect(week.weekStartCashCents - week.purchases.reduce((total, p) => total + p.cents, 0)).toBe(100000 - 1005)
+
+    await a.client.from('purchases').delete().eq('account_id', accountId)
+  })
 })
 
 describe('saving allowance changes', () => {
