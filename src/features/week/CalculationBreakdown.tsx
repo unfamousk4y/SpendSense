@@ -15,8 +15,8 @@ type CalculationBreakdownProps = {
   remainingCents: number;
   /** The most recent saved change to this week's allowance, if any. */
   lastChange?: { fromCents: number; madeOnLabel: string };
-  /** Left out when these cannot be saved yet: the screen says so instead. */
-  onAdjust?: () => void;
+  onAdjust: () => void;
+  /** Left out when releases cannot be saved yet: the screen says so instead. */
   onRelease?: () => void;
 };
 
@@ -81,21 +81,19 @@ export function CalculationBreakdown(props: CalculationBreakdownProps) {
         </dd>
       </dl>
 
-      {props.onAdjust ? (
-        <div className={styles.actions}>
-          <button type="button" className={styles.adjust} onClick={props.onAdjust}>
-            Adjust allowance
+      <div className={styles.actions}>
+        <button type="button" className={styles.adjust} onClick={props.onAdjust}>
+          Adjust allowance
+        </button>
+        {props.protectedCents > 0 && props.onRelease && (
+          <button type="button" className={styles.adjust} onClick={props.onRelease}>
+            Release savings
           </button>
-          {props.protectedCents > 0 && props.onRelease && (
-            <button type="button" className={styles.adjust} onClick={props.onRelease}>
-              Release savings
-            </button>
-          )}
-        </div>
-      ) : (
-        <p className={styles.footnote}>
-          Adjusting the allowance, releasing savings and closing a week are not available for saved accounts yet.
-        </p>
+        )}
+      </div>
+
+      {!props.onRelease && (
+        <p className={styles.footnote}>Releasing savings and closing a week are not available for saved accounts yet.</p>
       )}
 
       <p className={styles.footnote}>

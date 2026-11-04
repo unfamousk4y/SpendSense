@@ -3,13 +3,15 @@ import { useEffect, useReducer, useState, type ReactNode } from 'react';
 import {
   createAccount,
   deletePurchaseRow,
+  insertAllowanceChange,
   insertPurchase,
   loadLedger,
   updatePurchaseRow,
   type LoadedLedger,
   type SaveResult,
 } from '../../data/ledgerStore';
-import { localDateIn, type IsoDate } from '../../domain/dates';
+import type { AllowanceChange } from '../../domain/allowanceChange';
+import { localDateIn, mondayOf, type IsoDate } from '../../domain/dates';
 import { hasPlanThisWeek, ledgerReducer, weekAccount, type LedgerAction } from '../../domain/ledger';
 import type { Currency } from '../../domain/money';
 import type { Purchase } from '../../domain/week';
@@ -100,6 +102,7 @@ function SavedWeek({ client, loaded, today, currency, onCurrencyChange, onAccoun
   const [ledger, dispatch] = useReducer(ledgerReducer, loaded.ledger);
   const account = ledger.accounts[currency];
   const accountId = loaded.accountIds[currency];
+  const weekPlanId = loaded.weekPlanIds[currency]?.[mondayOf(today)];
 
   if (!account || !accountId) {
     return (
@@ -119,7 +122,7 @@ function SavedWeek({ client, loaded, today, currency, onCurrencyChange, onAccoun
     );
   }
 
-  if (!hasPlanThisWeek(account, today)) {
+  if (!hasPlanThisWeek(account, today) || !weekPlanId) {
     return (
       <div className={styles.message}>
         <h1 className={styles.heading}>Your {currency} plan has ended</h1>
@@ -159,6 +162,9 @@ function SavedWeek({ client, loaded, today, currency, onCurrencyChange, onAccoun
           saveThenApply(updatePurchaseRow(client, purchase), { type: 'updatePurchase', currency, purchase })
         }
         onDeletePurchase={(id: string) => saveThenApply(deletePurchaseRow(client, id), { type: 'deletePurchase', currency, id })}
+        onChangeAllowance={(change: AllowanceChange) =>
+          saveThenApply(insertAllowanceChange(client, weekPlanId, change), { type: 'changeAllowance', currency, change })
+        }
         accountControls={accountControls}
       />
     </MotionProvider>

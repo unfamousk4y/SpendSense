@@ -6,6 +6,7 @@ import {
   type AllowanceSide,
   type MidweekSuggestion,
 } from '../../domain/allowanceChange';
+import type { SaveResult } from '../../data/ledgerStore';
 import type { IsoDate } from '../../domain/dates';
 import { formatCents, type Currency } from '../../domain/money';
 import { Money } from '../../ui/Money';
@@ -31,7 +32,8 @@ type AdjustAllowanceDialogProps = {
   suggestion: MidweekSuggestion;
   /** Days in the plan after this week ends (D - d). */
   laterDays: number;
-  onSave: (change: AllowanceChange) => void;
+  /** Resolves when the save is confirmed or has failed. On success the parent closes the form. */
+  onSave: (change: AllowanceChange) => Promise<SaveResult>;
   onClose: () => void;
   /** Present when something is protected: offered when an increase is refused. */
   onReleaseSavings?: () => void;
@@ -55,6 +57,10 @@ export function AdjustAllowanceDialog({
   const [amountText, setAmountText] = useState(formatCents(currentAllowanceCents));
   // Set only when Save is pressed, so half-typed text is not flagged early.
   const [showProblem, setShowProblem] = useState(false);
+  // While a save is on its way the form stays open and cannot be sent again. If
+  // it fails, the typed amount stays and a retry reuses the same id.
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const dialogRef = useRef<HTMLDialogElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
@@ -90,33 +96,49 @@ export function AdjustAllowanceDialog({
       ? null
       : previewAllowanceChange({ currentAllowanceCents, proposedAllowanceCents: proposedCents, spentCents, freeCents });
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
     if (preview?.kind !== 'ok' || proposedCents === null) {
       setShowProblem(true);
       amountRef.current?.focus();
       return;
     }
-    onSave({
+    setSaving(true);
+    setSaveError(null);
+    const saved = await onSave({
       id: changeId,
       madeOn: today,
       fromCents: currentAllowanceCents,
       toCents: proposedCents,
       suggestedCents: suggestion.kind === 'ok' ? suggestion.totalCents : null,
     });
+    if (!saved.ok) {
+      setSaving(false);
+      setSaveError(saved.message);
+    }
   }
 
   const refused = preview?.kind === 'exceedsFreeCash';
   const formatProblem = proposedCents === null && showProblem;
 
   return (
-    <dialog ref={dialogRef} className={formStyles.dialog} aria-labelledby="adjust-title" onClose={onClose}>
+    <dialog
+      ref={dialogRef}
+      className={formStyles.dialog}
+      aria-labelledby="adjust-title"
+      onClose={onClose}
+      // Escape must not hide a save that is still on its way.
+      onCancel={(event) => {
+        if (saving) event.preventDefault();
+      }}
+    >
       <form className={formStyles.form} onSubmit={handleSubmit} noValidate>
         <div className={formStyles.titleRow}>
           <h2 id="adjust-title" className={formStyles.title}>
             Adjust this week’s allowance
           </h2>
-          <button type="button" className={formStyles.close} onClick={onClose}>
+          <button type="button" className={formStyles.close} onClick={onClose} disabled={saving}>
             Close
           </button>
         </div>
@@ -227,8 +249,14 @@ export function AdjustAllowanceDialog({
           This changes how your cash is planned, not the cash itself. Your purchases stay as they are.
         </p>
 
+        {saveError && (
+          <p className={formStyles.error} role="alert">
+            {saveError}
+          </p>
+        )}
+
         <button type="submit" className={formStyles.save}>
-          Save new allowance
+          {saving ? 'Saving' : saveError ? 'Try again' : 'Save new allowance'}
         </button>
       </form>
     </dialog>

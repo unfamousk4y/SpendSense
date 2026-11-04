@@ -21,6 +21,8 @@ export type LoadedLedger = {
   ledger: Ledger;
   /** Each account's row id, which new purchases are linked to. */
   accountIds: Partial<Record<Currency, string>>;
+  /** Each week plan's row id by its Monday, which allowance changes are linked to. */
+  weekPlanIds: Partial<Record<Currency, Record<IsoDate, string>>>;
 };
 
 export type LoadResult = { ok: true; loaded: LoadedLedger } | { ok: false; message: string };
@@ -91,9 +93,13 @@ async function readLedger(client: SupabaseClient, today: IsoDate): Promise<LoadR
 
   const ledger: Ledger = { today, accounts: {} };
   const accountIds: LoadedLedger['accountIds'] = {};
+  const weekPlanIds: LoadedLedger['weekPlanIds'] = {};
   for (const row of accounts.data) {
     const currency: Currency = row.currency;
     accountIds[currency] = row.id;
+    weekPlanIds[currency] = Object.fromEntries(
+      plans.data.filter((plan) => plan.account_id === row.id).map((plan) => [plan.week_start, plan.id]),
+    );
     ledger.accounts[currency] = toAccount(row, {
       purchases: purchases.data.filter((p) => p.account_id === row.id).map(toPurchase),
       weeks: plans.data.filter((plan) => plan.account_id === row.id).map((plan) => toWeekPlan(plan, changes.data)),
@@ -101,7 +107,7 @@ async function readLedger(client: SupabaseClient, today: IsoDate): Promise<LoadR
       releases: releases.data.filter((r) => r.account_id === row.id).map(toRelease),
     });
   }
-  return { ok: true, loaded: { ledger, accountIds } };
+  return { ok: true, loaded: { ledger, accountIds, weekPlanIds } };
 }
 
 /** Creates the account and its first week plan in one transaction. */
@@ -129,11 +135,27 @@ export async function createAccount(client: SupabaseClient, account: NewAccount)
  * to this student, it is someone else's and nothing was saved.
  */
 export async function insertPurchase(client: SupabaseClient, accountId: string, purchase: Purchase): Promise<SaveResult> {
-  const { error } = await client.from('purchases').insert({ id: purchase.id, account_id: accountId, ...purchaseColumns(purchase) });
+  return insertOnce(client, 'purchases', { id: purchase.id, account_id: accountId, ...purchaseColumns(purchase) });
+}
+
+/** Records a saved allowance change; retries are safe in the same way as purchases. */
+export async function insertAllowanceChange(client: SupabaseClient, weekPlanId: string, change: AllowanceChange): Promise<SaveResult> {
+  return insertOnce(client, 'allowance_changes', {
+    id: change.id,
+    week_plan_id: weekPlanId,
+    made_on: change.madeOn,
+    from_cents: change.fromCents,
+    to_cents: change.toCents,
+    suggested_cents: change.suggestedCents,
+  });
+}
+
+async function insertOnce(client: SupabaseClient, table: string, row: { id: string } & Record<string, unknown>): Promise<SaveResult> {
+  const { error } = await client.from(table).insert(row);
   if (!error) return { ok: true };
   if (error.code !== UNIQUE_VIOLATION) return { ok: false, message: saveMessage(error) };
 
-  const found = await client.from('purchases').select('id').eq('id', purchase.id);
+  const found = await client.from(table).select('id').eq('id', row.id);
   return !found.error && found.data.length === 1 ? { ok: true } : { ok: false, message: SAVE_FAILED };
 }
 

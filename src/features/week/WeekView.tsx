@@ -32,8 +32,8 @@ type WeekViewProps = {
   onAddPurchase: (purchase: Purchase) => Promise<SaveResult>;
   onUpdatePurchase: (purchase: Purchase) => Promise<SaveResult>;
   onDeletePurchase: (id: string) => Promise<SaveResult>;
-  /** Left out for saved accounts until these can be written to the database. */
-  onChangeAllowance?: (change: AllowanceChange) => void;
+  onChangeAllowance: (change: AllowanceChange) => Promise<SaveResult>;
+  /** Left out for saved accounts until releases can be written to the database. */
   onReleaseSavings?: (release: SavingsRelease) => void;
   /** Present only on the fictional demo: move the date forward one day. */
   onNextDay?: () => void;
@@ -148,10 +148,13 @@ export function WeekView({
     return result;
   }
 
-  function handleAllowanceSave(change: AllowanceChange) {
-    onChangeAllowance?.(change);
-    setLastAction({ kind: 'allowance', change });
-    setDialog(null);
+  async function handleAllowanceSave(change: AllowanceChange): Promise<SaveResult> {
+    const result = await onChangeAllowance(change);
+    if (result.ok) {
+      setLastAction({ kind: 'allowance', change });
+      setDialog(null);
+    }
+    return result;
   }
 
   function handleRelease(release: SavingsRelease) {
@@ -200,7 +203,7 @@ export function WeekView({
           madeOnLabel: label(lastChange.madeOn, { weekday: 'short', month: 'short', day: 'numeric' }),
         }
       }
-      onAdjust={onChangeAllowance && (() => setDialog({ mode: 'allowance' }))}
+      onAdjust={() => setDialog({ mode: 'allowance' })}
       onRelease={onReleaseSavings && (() => setDialog({ mode: 'release' }))}
     />
   );
@@ -426,7 +429,7 @@ export function WeekView({
 
       {/* Mounted only while open, so every opening starts fresh: an empty form
           and a new id when adding, the purchase's own values and id when editing. */}
-      {dialog?.mode === 'allowance' && onChangeAllowance && (
+      {dialog?.mode === 'allowance' && (
         <AdjustAllowanceDialog
           currency={currency}
           today={today}

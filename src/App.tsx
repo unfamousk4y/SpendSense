@@ -68,7 +68,7 @@ function DemoWeek() {
         onAddPurchase={(purchase) => applied({ type: 'addPurchase', currency, purchase })}
         onUpdatePurchase={(purchase) => applied({ type: 'updatePurchase', currency, purchase })}
         onDeletePurchase={(id) => applied({ type: 'deletePurchase', currency, id })}
-        onChangeAllowance={(change) => dispatch({ type: 'changeAllowance', currency, change })}
+        onChangeAllowance={(change) => applied({ type: 'changeAllowance', currency, change })}
         onReleaseSavings={(release) => dispatch({ type: 'releaseSavings', currency, release })}
         onNextDay={() => dispatch({ type: 'nextDay' })}
       />
