@@ -105,11 +105,13 @@ export type PaymentSide = { cashCents: number; commitmentsCents: number; freeCen
 /**
  * What paying a bill does, or correcting a payment already made. Paid exactly
  * as expected, C and B fall together and F does not move. Anything different
- * from what B had reserved moves F by that difference.
+ * from what B had reserved moves F by that difference. With keepRest, what is
+ * still owed stays in B, so F does not move then either.
  */
 export function previewBillPayment({
   bill,
   payment,
+  keepRest = false,
   planEndDate,
   currentCashCents,
   commitmentsCents,
@@ -117,14 +119,16 @@ export function previewBillPayment({
 }: {
   bill: Bill;
   payment: BillPayment;
+  /** The student still owes the rest of the bill. */
+  keepRest?: boolean;
   planEndDate: IsoDate;
   currentCashCents: number;
   commitmentsCents: number;
   freeCents: number;
 }): { before: PaymentSide; after: PaymentSide } {
-  const paidBill = recordPayment(bill, payment);
-  const cashChange = billPaymentsCents([bill]) - billPaymentsCents([paidBill]);
-  const commitmentsChange = unpaidBillsCents([paidBill], planEndDate) - unpaidBillsCents([bill], planEndDate);
+  const billsAfter = keepRest ? splitPayment(bill, payment, 'preview') : [recordPayment(bill, payment)];
+  const cashChange = billPaymentsCents([bill]) - billPaymentsCents(billsAfter);
+  const commitmentsChange = unpaidBillsCents(billsAfter, planEndDate) - unpaidBillsCents([bill], planEndDate);
   return {
     before: { cashCents: currentCashCents, commitmentsCents, freeCents },
     after: {
@@ -137,6 +141,18 @@ export function previewBillPayment({
 
 export function recordPayment(bill: Bill, payment: BillPayment): Bill {
   return { ...bill, ...payment };
+}
+
+/**
+ * Paying part of a bill: the bill becomes the part that was paid, and a new
+ * unpaid bill with the same name and due date holds the rest.
+ */
+export function splitPayment(bill: Bill, payment: BillPayment, restId: string): [Bill, Bill] {
+  const { id, name, dueOn, cents } = bill;
+  return [
+    { id, name, dueOn, cents: payment.paidCents, ...payment },
+    { id: restId, name, dueOn, cents: cents - payment.paidCents },
+  ];
 }
 
 export function undoPayment({ id, name, dueOn, cents }: Bill): Bill {

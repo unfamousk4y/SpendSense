@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { addBillOnce, billPaymentsCents, previewBillChange, previewBillPayment, removeBill, undoPayment, unpaidBillsCents, updateBill, type Bill } from './bills';
+import { addBillOnce, billPaymentsCents, previewBillChange, previewBillPayment, removeBill, splitPayment, undoPayment, unpaidBillsCents, updateBill, type Bill } from './bills';
 import { demoLedger } from '../fixtures/demoWeek';
 import { freeCashCents } from './allowance';
 import { weekAccount, ledgerReducer, type Ledger, type LedgerAction } from './ledger';
@@ -312,5 +312,79 @@ describe('paying bills in the ledger', () => {
     const bill = () => weekAccount(monday, 'USD').bills.find((b) => b.id === 'usd-bill-1');
     expect(weekAccount(run(monday, undo), 'USD').bills).toContainEqual(bill());
     expect(weekAccount(run(monday, pay(1, '2026-11-09')), 'USD').bills).toContainEqual(bill());
+  });
+});
+
+describe('paying part of a bill and still owing the rest', () => {
+  const now = { planEndDate: PLAN_END, currentCashCents: 96000, commitmentsCents: 20000, freeCents: 56000 };
+  const part = { paidOn: '2026-11-05', paidCents: 5000 };
+
+  test('the bill becomes the part paid, and a new bill holds the rest', () => {
+    expect(splitPayment(rent, part, 'rest')).toEqual([
+      { id: 'rent', name: 'Rent', dueOn: '2026-11-20', cents: 5000, paidOn: '2026-11-05', paidCents: 5000 },
+      { id: 'rest', name: 'Rent', dueOn: '2026-11-20', cents: 10000 },
+    ]);
+  });
+
+  test('paying 50 of 150 and keeping the rest: C 910, B 150, F still 560', () => {
+    expect(previewBillPayment({ bill: rent, payment: part, keepRest: true, ...now }).after).toEqual({
+      cashCents: 91000,
+      commitmentsCents: 15000,
+      freeCents: 56000,
+    });
+  });
+
+  test('the same payment, settled for less: C 910, B 50, F 660', () => {
+    expect(previewBillPayment({ bill: rent, payment: part, ...now }).after).toEqual({
+      cashCents: 91000,
+      commitmentsCents: 5000,
+      freeCents: 66000,
+    });
+  });
+
+  test('a bill due after the plan end stays uncounted, so only cash and free cash move', () => {
+    const later = { ...rent, dueOn: '2026-12-15' };
+    expect(previewBillPayment({ bill: later, payment: part, keepRest: true, ...now }).after).toEqual({
+      cashCents: 91000,
+      commitmentsCents: 20000,
+      freeCents: 51000,
+    });
+  });
+
+  const run = (state: Ledger, ...actions: LedgerAction[]) => actions.reduce(ledgerReducer, state);
+  const split = (paidCents = 5000, paidOn = '2026-11-05'): LedgerAction => ({
+    type: 'payBillKeepRest',
+    currency: 'USD',
+    id: 'usd-bill-1',
+    payment: { paidOn, paidCents },
+    restId: 'usd-rest',
+  });
+
+  test('in the ledger: the rest stays owed and the weekly numbers do not move', () => {
+    const before = weekAccount(demoLedger, 'USD');
+    const after = weekAccount(run(demoLedger, split()), 'USD');
+    expect(after.commitmentsCents).toBe(15000);
+    expect(after.billPaymentsThisWeekCents).toBe(5000);
+    expect(after.chosenAllowanceCents).toBe(before.chosenAllowanceCents);
+    expect(after.purchases).toEqual(before.purchases);
+  });
+
+  test('a retry after a lost reply splits once', () => {
+    const account = weekAccount(run(demoLedger, split(), split()), 'USD');
+    expect(account.bills).toHaveLength(3);
+    expect(account.billPaymentsThisWeekCents).toBe(5000);
+  });
+
+  test('undoing leaves two unpaid bills that add up to the original', () => {
+    const undone = run(demoLedger, split(), { type: 'undoBillPayment', currency: 'USD', id: 'usd-bill-1' });
+    const account = weekAccount(undone, 'USD');
+    expect(account.commitmentsCents).toBe(20000);
+    expect(account.billPaymentsThisWeekCents).toBe(0);
+    expect(account.bills.filter((bill) => bill.name === 'Rent share').map((bill) => bill.cents)).toEqual([5000, 10000]);
+  });
+
+  test('an amount that leaves nothing owed, or a date not open, changes nothing', () => {
+    expect(weekAccount(run(demoLedger, split(15000)), 'USD')).toEqual(weekAccount(demoLedger, 'USD'));
+    expect(weekAccount(run(demoLedger, split(5000, '2026-11-06')), 'USD')).toEqual(weekAccount(demoLedger, 'USD'));
   });
 });

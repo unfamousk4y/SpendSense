@@ -2,7 +2,7 @@
 // publishable key only. Fictional data only.
 import { createClient } from '@supabase/supabase-js'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
-import { createAccount, deleteBillRow, exportOwnData, insertBill, loadLedger, payBillRow, saveAllowanceChange, undoBillPaymentRow, updateBillRow, type NewAccount } from '../../src/data/ledgerStore'
+import { createAccount, deleteBillRow, exportOwnData, insertBill, loadLedger, payBillKeepRest, payBillRow, saveAllowanceChange, undoBillPaymentRow, updateBillRow, type NewAccount } from '../../src/data/ledgerStore'
 import type { Bill } from '../../src/domain/bills'
 import { weekAccount } from '../../src/domain/ledger'
 import { signIn, type TestUser } from './clients.ts'
@@ -442,5 +442,96 @@ describe('paying through the data layer', () => {
     await payBillRow(a.client, bill.id, { paidOn: WEEK_1, paidCents: 15000 })
     expect((await undoBillPaymentRow(b.client, bill.id)).ok).toBe(false)
     expect(weekAccount((await load(a)).ledger, 'USD').billPaymentsThisWeekCents).toBe(15000)
+  })
+})
+
+describe('paying part of a bill and still owing the rest', () => {
+  let accountId: string
+  let bill: Bill
+  const part = { paidOn: WEEK_1, paidCents: 5000 }
+
+  beforeEach(async () => {
+    accountId = await start(a)
+    await start(b)
+    bill = { id: crypto.randomUUID(), name: 'Fictional rent', dueOn: '2026-11-01', cents: 15000 }
+    await insertBill(a.client, accountId, bill)
+    await addBill(a, accountId, 5000)
+  })
+
+  test('worked example: paying 50 of 150 leaves B 150 and free cash 560', async () => {
+    const restId = crypto.randomUUID()
+    expect(await payBillKeepRest(a.client, bill.id, part, restId)).toEqual({ ok: true })
+    const week = weekAccount((await load(a)).ledger, 'USD')
+    expect(week.bills).toContainEqual({ ...bill, cents: 5000, paidOn: WEEK_1, paidCents: 5000 })
+    expect(week.bills).toContainEqual({ ...bill, id: restId, cents: 10000 })
+    expect(week.commitmentsCents).toBe(15000)
+    expect(week.billPaymentsThisWeekCents).toBe(5000)
+    await expectDatabaseFreeCash(a, 56000)
+  })
+
+  test('saving it again splits once and reports success', async () => {
+    const restId = crypto.randomUUID()
+    await payBillKeepRest(a.client, bill.id, part, restId)
+    expect(await payBillKeepRest(a.client, bill.id, part, restId)).toEqual({ ok: true })
+    expect(weekAccount((await load(a)).ledger, 'USD').bills).toHaveLength(3)
+  })
+
+  test('the same id with a different amount is refused, not treated as a retry', async () => {
+    const restId = crypto.randomUUID()
+    await payBillKeepRest(a.client, bill.id, part, restId)
+    expect((await payBillKeepRest(a.client, bill.id, { paidOn: WEEK_1, paidCents: 1000 }, restId)).ok).toBe(false)
+    expect(weekAccount((await load(a)).ledger, 'USD').billPaymentsThisWeekCents).toBe(5000)
+  })
+
+  test('an amount that leaves nothing owed is refused', async () => {
+    for (const paidCents of [15000, 16000]) {
+      expect((await payBillKeepRest(a.client, bill.id, { paidOn: WEEK_1, paidCents }, crypto.randomUUID())).ok).toBe(false)
+    }
+    expect((await payBillKeepRest(a.client, bill.id, { paidOn: WEEK_1, paidCents: 0 }, crypto.randomUUID())).ok).toBe(false)
+    expect(weekAccount((await load(a)).ledger, 'USD').bills).toHaveLength(2)
+  })
+
+  test('a date still to come and a closed week are refused, and nothing is split', async () => {
+    const future = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10)
+    expect((await payBillKeepRest(a.client, bill.id, { paidOn: future, paidCents: 5000 }, crypto.randomUUID())).ok).toBe(false)
+    await load(a, WEEK_2) // Closes week 1.
+    expect((await payBillKeepRest(a.client, bill.id, part, crypto.randomUUID())).ok).toBe(false)
+    const week = weekAccount((await load(a, WEEK_2)).ledger, 'USD')
+    expect(week.bills).toHaveLength(2)
+    expect(week.commitmentsCents).toBe(20000)
+  })
+
+  test('undoing leaves two unpaid bills that add up to the original', async () => {
+    await payBillKeepRest(a.client, bill.id, part, crypto.randomUUID())
+    expect(await undoBillPaymentRow(a.client, bill.id)).toEqual({ ok: true })
+    const week = weekAccount((await load(a)).ledger, 'USD')
+    expect(week.commitmentsCents).toBe(20000)
+    expect(week.billPaymentsThisWeekCents).toBe(0)
+    await expectDatabaseFreeCash(a, 56000)
+  })
+
+  test("B cannot split A's bill", async () => {
+    expect((await payBillKeepRest(b.client, bill.id, part, crypto.randomUUID())).ok).toBe(false)
+    const week = weekAccount((await load(a)).ledger, 'USD')
+    expect(week.bills).toHaveLength(2)
+    expect(week.billPaymentsThisWeekCents).toBe(0)
+    expect(weekAccount((await load(b)).ledger, 'USD').bills).toEqual([])
+  })
+
+  test("all or nothing: when the second step fails on A's id, B's bill is left unpaid", async () => {
+    const bAccountId = (await load(b)).accountIds.USD!
+    const own: Bill = { id: crypto.randomUUID(), name: 'Fictional fee', dueOn: '2026-11-01', cents: 15000 }
+    await insertBill(b.client, bAccountId, own)
+    expect((await payBillKeepRest(b.client, own.id, part, bill.id)).ok).toBe(false)
+    expect(weekAccount((await load(b)).ledger, 'USD').bills).toEqual([own])
+    expect(weekAccount((await load(a)).ledger, 'USD').bills).toContainEqual(bill)
+  })
+
+  test('a signed-out visitor is refused', async () => {
+    const anon = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_PUBLISHABLE_KEY!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+    const { error } = await anon.rpc('pay_bill_keep_rest', { p_bill_id: bill.id, p_rest_id: crypto.randomUUID(), p_paid_on: WEEK_1, p_paid_cents: 5000 })
+    expect(error?.code).toBe('42501')
   })
 })

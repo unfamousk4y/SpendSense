@@ -21,7 +21,8 @@ type PayBillDialogProps = {
   freeCents: number;
   remainingCents: number;
   /** Resolves when the save is confirmed or has failed. On success the parent closes the form. */
-  onPay: (bill: Bill, payment: BillPayment) => Promise<SaveResult>;
+  /** restId is present when the student still owes the rest of the bill. */
+  onPay: (bill: Bill, payment: BillPayment, restId?: string) => Promise<SaveResult>;
   onUndo: (bill: Bill) => Promise<SaveResult>;
   onClose: () => void;
 };
@@ -53,6 +54,11 @@ export function PayBillDialog({
   const alreadyPaid = bill.paidOn !== undefined;
   const [amountText, setAmountText] = useState(formatCents(bill.paidCents ?? bill.cents));
   const [paidOn, setPaidOn] = useState(bill.paidOn ?? dates[0].date);
+  // Starts on the answer that cannot overstate free cash.
+  const [settledForLess, setSettledForLess] = useState(false);
+  // One per opening of the form, which every attempt to save reuses, so a retry
+  // cannot split the bill twice.
+  const [restId] = useState(() => crypto.randomUUID());
   // Set only when Save is pressed, so half-typed text is not flagged early.
   const [showProblem, setShowProblem] = useState(false);
   const [confirmingUndo, setConfirmingUndo] = useState(false);
@@ -77,11 +83,14 @@ export function PayBillDialog({
 
   // Worked out from the typed text on every render, never kept in state.
   const parsed = parseAmount(amountText);
+  const restCents = parsed.kind === 'ok' && parsed.cents < bill.cents ? bill.cents - parsed.cents : null;
+  const keepRest = restCents !== null && !settledForLess;
   const preview =
     parsed.kind === 'ok'
       ? previewBillPayment({
           bill,
           payment: { paidOn, paidCents: parsed.cents },
+          keepRest,
           planEndDate,
           currentCashCents,
           commitmentsCents,
@@ -108,7 +117,7 @@ export function PayBillDialog({
       amountRef.current?.focus();
       return;
     }
-    void run(() => onPay(bill, { paidOn, paidCents: parsed.cents }));
+    void run(() => onPay(bill, { paidOn, paidCents: parsed.cents }, keepRest ? restId : undefined));
   }
 
   return (
@@ -133,8 +142,8 @@ export function PayBillDialog({
         </div>
 
         <p className={styles.hint}>
-          Record this once you have paid it. The bill was <Money cents={bill.cents} currency={currency} />; if it came in
-          different, enter what you actually paid. Nothing moves between bank accounts.
+          Record this once you have paid it. The bill is <Money cents={bill.cents} currency={currency} />; enter what you
+          actually paid. Nothing moves between bank accounts.
         </p>
 
         <label className={formStyles.field}>
@@ -165,6 +174,22 @@ export function PayBillDialog({
             </span>
           )}
         </label>
+
+        {restCents !== null && (
+          <fieldset className={styles.choice}>
+            <legend className={formStyles.label}>That is less than the bill</legend>
+            <label className={styles.choiceOption}>
+              <input type="radio" name="bill-rest" checked={!settledForLess} onChange={() => setSettledForLess(false)} />
+              <span>
+                I still owe the rest, <Money cents={restCents} currency={currency} />
+              </span>
+            </label>
+            <label className={styles.choiceOption}>
+              <input type="radio" name="bill-rest" checked={settledForLess} onChange={() => setSettledForLess(true)} />
+              <span>The bill came in lower, so it is settled</span>
+            </label>
+          </fieldset>
+        )}
 
         <label className={formStyles.field}>
           <span className={formStyles.label}>Date paid</span>

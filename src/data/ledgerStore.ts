@@ -345,6 +345,17 @@ export async function payBillRow(client: SupabaseClient, id: string, payment: Bi
   return setPayment(client, id, { paid_on: payment.paidOn, paid_cents: payment.paidCents });
 }
 
+/** Pays part of a bill and keeps the rest owed, in one transaction. Saving it again changes nothing. */
+export async function payBillKeepRest(client: SupabaseClient, id: string, payment: BillPayment, restId: string): Promise<SaveResult> {
+  const { error } = await client.rpc('pay_bill_keep_rest', {
+    p_bill_id: id,
+    p_rest_id: restId,
+    p_paid_on: payment.paidOn,
+    p_paid_cents: payment.paidCents,
+  });
+  return error ? { ok: false, message: saveMessage(error) } : { ok: true };
+}
+
 export async function undoBillPaymentRow(client: SupabaseClient, id: string): Promise<SaveResult> {
   return setPayment(client, id, { paid_on: null, paid_cents: null });
 }

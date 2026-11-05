@@ -15,6 +15,7 @@ import {
   billPaymentsCents,
   recordPayment,
   removeBill,
+  splitPayment,
   undoPayment,
   unpaidBillsCents,
   updateBill,
@@ -81,6 +82,7 @@ export type LedgerAction =
   | { type: 'updateBill'; currency: Currency; bill: Bill }
   | { type: 'deleteBill'; currency: Currency; id: string }
   | { type: 'payBill'; currency: Currency; id: string; payment: BillPayment }
+  | { type: 'payBillKeepRest'; currency: Currency; id: string; payment: BillPayment; restId: string }
   | { type: 'undoBillPayment'; currency: Currency; id: string }
   | { type: 'changeAllowance'; currency: Currency; change: AllowanceChange }
   | { type: 'releaseSavings'; currency: Currency; release: SavingsRelease }
@@ -212,6 +214,20 @@ export function ledgerReducer(state: Ledger, action: LedgerAction): Ledger {
       return changeAccount(state, action.currency, (account) => ({
         ...account,
         bills: updateBill(account.bills, recordPayment(original, action.payment)),
+      }));
+    }
+
+    case 'payBillKeepRest': {
+      const existing = state.accounts[action.currency];
+      const original = existing?.bills.find((bill) => bill.id === action.id);
+      if (!existing || !original || !billCanChange(state, existing, original)) return state;
+      if (!isOpenDate(state, existing, action.payment.paidOn)) return state;
+      // Already split (a retry), or nothing would be left to owe.
+      if (existing.bills.some((bill) => bill.id === action.restId) || action.payment.paidCents >= original.cents) return state;
+      const [paidPart, rest] = splitPayment(original, action.payment, action.restId);
+      return changeAccount(state, action.currency, (account) => ({
+        ...account,
+        bills: addBillOnce(updateBill(account.bills, paidPart), rest),
       }));
     }
 

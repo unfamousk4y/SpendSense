@@ -9,6 +9,7 @@ import {
   insertIncome,
   insertPurchase,
   loadLedger,
+  payBillKeepRest,
   payBillRow,
   saveAllowanceChange,
   saveRelease,
@@ -186,6 +187,9 @@ function SavedWeek({ client, loaded, today, currency, onCurrencyChange, onAccoun
         onDeleteBill={(id: string) => saveThenApply(deleteBillRow(client, id), { type: 'deleteBill', currency, id })}
         onPayBill={(id: string, payment: BillPayment) =>
           saveThenApply(payBillRow(client, id, payment), { type: 'payBill', currency, id, payment })
+        }
+        onPayBillKeepRest={(id: string, payment: BillPayment, restId: string) =>
+          saveThenApply(payBillKeepRest(client, id, payment, restId), { type: 'payBillKeepRest', currency, id, payment, restId })
         }
         onUndoBillPayment={(id: string) => saveThenApply(undoBillPaymentRow(client, id), { type: 'undoBillPayment', currency, id })}
         onChangeAllowance={(change: AllowanceChange) =>

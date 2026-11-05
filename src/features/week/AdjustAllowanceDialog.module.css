@@ -109,3 +109,17 @@
   color: var(--ink-muted);
   font-size: 0.8125rem;
 }
+
+.choice {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choiceOption {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+}

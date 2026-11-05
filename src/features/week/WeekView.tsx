@@ -44,6 +44,7 @@ type WeekViewProps = {
   onUpdateBill: (bill: Bill) => Promise<SaveResult>;
   onDeleteBill: (id: string) => Promise<SaveResult>;
   onPayBill: (id: string, payment: BillPayment) => Promise<SaveResult>;
+  onPayBillKeepRest: (id: string, payment: BillPayment, restId: string) => Promise<SaveResult>;
   onUndoBillPayment: (id: string) => Promise<SaveResult>;
   onChangeAllowance: (change: AllowanceChange) => Promise<SaveResult>;
   onReleaseSavings: (release: SavingsRelease) => Promise<SaveResult>;
@@ -78,7 +79,7 @@ type LastAction =
   | { kind: 'purchase'; verb: 'Saved' | 'Updated' | 'Deleted'; purchase: Purchase }
   | { kind: 'income'; verb: 'Recorded' | 'Updated' | 'Deleted'; income: IncomeReceipt }
   | { kind: 'bill'; verb: 'Added' | 'Updated' | 'Deleted'; bill: Bill }
-  | { kind: 'billPaid'; verb: 'Paid' | 'Updated'; name: string; cents: number }
+  | { kind: 'billPaid'; verb: 'Paid' | 'Updated'; name: string; cents: number; restCents?: number }
   | { kind: 'billUnpaid'; name: string; cents: number }
   | { kind: 'allowance'; change: AllowanceChange }
   | { kind: 'release'; release: SavingsRelease }
@@ -105,6 +106,7 @@ export function WeekView({
   onUpdateBill,
   onDeleteBill,
   onPayBill,
+  onPayBillKeepRest,
   onUndoBillPayment,
   onChangeAllowance,
   onReleaseSavings,
@@ -226,10 +228,16 @@ export function WeekView({
     return result;
   }
 
-  async function handleBillPay(bill: Bill, payment: BillPayment): Promise<SaveResult> {
-    const result = await onPayBill(bill.id, payment);
+  async function handleBillPay(bill: Bill, payment: BillPayment, restId?: string): Promise<SaveResult> {
+    const result = await (restId ? onPayBillKeepRest(bill.id, payment, restId) : onPayBill(bill.id, payment));
     if (result.ok) {
-      setLastAction({ kind: 'billPaid', verb: bill.paidOn ? 'Updated' : 'Paid', name: bill.name, cents: payment.paidCents });
+      setLastAction({
+        kind: 'billPaid',
+        verb: bill.paidOn ? 'Updated' : 'Paid',
+        name: bill.name,
+        cents: payment.paidCents,
+        ...(restId && { restCents: bill.cents - payment.paidCents }),
+      });
       setDialog(null);
     }
     return result;
@@ -403,8 +411,13 @@ export function WeekView({
               {lastAction?.kind === 'billPaid' && (
                 <>
                   {lastAction.verb === 'Paid' ? 'Paid' : 'Updated the payment for'} {lastAction.name},{' '}
-                  <Money cents={lastAction.cents} currency={currency} />. Bill payments are not spending, so your weekly
-                  remaining has not changed.
+                  <Money cents={lastAction.cents} currency={currency} />.{' '}
+                  {lastAction.restCents !== undefined && (
+                    <>
+                      <Money cents={lastAction.restCents} currency={currency} /> is still in your unpaid bills.{' '}
+                    </>
+                  )}
+                  Bill payments are not spending, so your weekly remaining has not changed.
                 </>
               )}
               {lastAction?.kind === 'billUnpaid' && (
