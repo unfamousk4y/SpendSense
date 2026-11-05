@@ -284,6 +284,51 @@
   grid-template-columns: 3.25rem 1fr auto auto;
 }
 
+/* A row and its Pay button, which cannot sit inside the row's own button. On a
+   phone Pay goes underneath, so the name and amount keep the full width. */
+.billItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  border-bottom: 1px solid var(--rule);
+}
+
+.billItem .activityRow {
+  border-bottom: 0;
+}
+
+.payButton {
+  justify-self: end;
+  min-width: 72px;
+  min-height: 44px;
+  margin-bottom: 10px;
+  padding: 0 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+@media (min-width: 480px) {
+  .billItem {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .payButton {
+    margin-bottom: 0;
+  }
+}
+
+.subTitle {
+  margin: 20px 0 4px;
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
 .overdue {
   display: block;
   color: var(--red);

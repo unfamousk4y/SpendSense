@@ -9,8 +9,10 @@ import {
   insertIncome,
   insertPurchase,
   loadLedger,
+  payBillRow,
   saveAllowanceChange,
   saveRelease,
+  undoBillPaymentRow,
   updateBillRow,
   updateIncomeRow,
   updatePurchaseRow,
@@ -18,7 +20,7 @@ import {
   type SaveResult,
 } from '../../data/ledgerStore';
 import type { AllowanceChange } from '../../domain/allowanceChange';
-import type { Bill } from '../../domain/bills';
+import type { Bill, BillPayment } from '../../domain/bills';
 import { localDateIn, mondayOf, type IsoDate } from '../../domain/dates';
 import { hasPlanThisWeek, ledgerReducer, weekAccount, type LedgerAction } from '../../domain/ledger';
 import type { IncomeReceipt } from '../../domain/income';
@@ -182,6 +184,10 @@ function SavedWeek({ client, loaded, today, currency, onCurrencyChange, onAccoun
         onAddBill={(bill: Bill) => saveThenApply(insertBill(client, accountId, bill), { type: 'addBill', currency, bill })}
         onUpdateBill={(bill: Bill) => saveThenApply(updateBillRow(client, bill), { type: 'updateBill', currency, bill })}
         onDeleteBill={(id: string) => saveThenApply(deleteBillRow(client, id), { type: 'deleteBill', currency, id })}
+        onPayBill={(id: string, payment: BillPayment) =>
+          saveThenApply(payBillRow(client, id, payment), { type: 'payBill', currency, id, payment })
+        }
+        onUndoBillPayment={(id: string) => saveThenApply(undoBillPaymentRow(client, id), { type: 'undoBillPayment', currency, id })}
         onChangeAllowance={(change: AllowanceChange) =>
           saveThenApply(saveAllowanceChange(client, weekPlanId, change), { type: 'changeAllowance', currency, change })
         }

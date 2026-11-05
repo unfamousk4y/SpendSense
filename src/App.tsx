@@ -74,6 +74,8 @@ function DemoWeek() {
         onAddBill={(bill) => applied({ type: 'addBill', currency, bill })}
         onUpdateBill={(bill) => applied({ type: 'updateBill', currency, bill })}
         onDeleteBill={(id) => applied({ type: 'deleteBill', currency, id })}
+        onPayBill={(id, payment) => applied({ type: 'payBill', currency, id, payment })}
+        onUndoBillPayment={(id) => applied({ type: 'undoBillPayment', currency, id })}
         onChangeAllowance={(change) => applied({ type: 'changeAllowance', currency, change })}
         onReleaseSavings={(release) => applied({ type: 'releaseSavings', currency, release })}
         onNextDay={() => dispatch({ type: 'nextDay' })}

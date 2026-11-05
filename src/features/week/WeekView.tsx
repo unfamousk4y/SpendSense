@@ -4,7 +4,7 @@ import { allocateCash } from '../../domain/allocation';
 import { freeCashCents } from '../../domain/allowance';
 import { midweekSuggestion, type AllowanceChange } from '../../domain/allowanceChange';
 import { categoryLabel, purchaseTitle } from '../../domain/categories';
-import { SETUP_BILL_NAME, type Bill } from '../../domain/bills';
+import { SETUP_BILL_NAME, type Bill, type BillPayment } from '../../domain/bills';
 import { sumIncome, type IncomeReceipt } from '../../domain/income';
 import { addDays, daysBetween, planDays, type IsoDate } from '../../domain/dates';
 import type { Currency } from '../../domain/money';
@@ -19,6 +19,7 @@ import { BillDialog } from './BillDialog';
 import { CalculationBreakdown } from './CalculationBreakdown';
 import { IncomeDialog } from './IncomeDialog';
 import { ClosureSummary } from './ClosureSummary';
+import { PayBillDialog } from './PayBillDialog';
 import { moneyFlow } from '../../domain/moneyFlow';
 import { CashPanel } from './CashPanel';
 import { MoneyFlow } from './MoneyFlow';
@@ -42,6 +43,8 @@ type WeekViewProps = {
   onAddBill: (bill: Bill) => Promise<SaveResult>;
   onUpdateBill: (bill: Bill) => Promise<SaveResult>;
   onDeleteBill: (id: string) => Promise<SaveResult>;
+  onPayBill: (id: string, payment: BillPayment) => Promise<SaveResult>;
+  onUndoBillPayment: (id: string) => Promise<SaveResult>;
   onChangeAllowance: (change: AllowanceChange) => Promise<SaveResult>;
   onReleaseSavings: (release: SavingsRelease) => Promise<SaveResult>;
   /** Present only on the fictional demo: move the date forward one day. */
@@ -58,6 +61,7 @@ type DialogState =
   | { mode: 'editIncome'; income: IncomeReceipt }
   | { mode: 'addBill' }
   | { mode: 'editBill'; bill: Bill }
+  | { mode: 'payBill'; bill: Bill }
   | { mode: 'allowance' }
   | { mode: 'release' }
   | null;
@@ -74,6 +78,8 @@ type LastAction =
   | { kind: 'purchase'; verb: 'Saved' | 'Updated' | 'Deleted'; purchase: Purchase }
   | { kind: 'income'; verb: 'Recorded' | 'Updated' | 'Deleted'; income: IncomeReceipt }
   | { kind: 'bill'; verb: 'Added' | 'Updated' | 'Deleted'; bill: Bill }
+  | { kind: 'billPaid'; verb: 'Paid' | 'Updated'; name: string; cents: number }
+  | { kind: 'billUnpaid'; name: string; cents: number }
   | { kind: 'allowance'; change: AllowanceChange }
   | { kind: 'release'; release: SavingsRelease }
   | null;
@@ -98,6 +104,8 @@ export function WeekView({
   onAddBill,
   onUpdateBill,
   onDeleteBill,
+  onPayBill,
+  onUndoBillPayment,
   onChangeAllowance,
   onReleaseSavings,
   onNextDay,
@@ -111,8 +119,9 @@ export function WeekView({
 
   const { currency, weekStart } = account;
   const summary = summarizeWeek(weekStart, account.chosenAllowanceCents, account.purchases);
-  // Derived, never stored: cash on Monday, plus income since, minus spending since.
-  const currentCashCents = account.weekStartCashCents + sumIncome(account.income) - summary.spentCents;
+  // Derived, never stored: cash on Monday, plus income since, minus spending and bill payments since.
+  const currentCashCents =
+    account.weekStartCashCents + sumIncome(account.income) - summary.spentCents - account.billPaymentsThisWeekCents;
   const cashParts = {
     currentCashCents,
     protectedCents: account.protectedCents,
@@ -143,6 +152,10 @@ export function WeekView({
 
   // Soonest first; bills due on one day stay in the order they were added.
   const unpaidBills = account.bills.filter((bill) => bill.paidOn === undefined).sort((a, b) => a.dueOn.localeCompare(b.dueOn));
+  // A payment can be corrected only while its week is open, so only these are listed.
+  const paidThisWeek = account.bills
+    .filter((bill) => bill.paidOn !== undefined && bill.paidOn >= weekStart)
+    .sort((a, b) => (b.paidOn ?? '').localeCompare(a.paidOn ?? ''));
   const hasSetupBill = unpaidBills.some((bill) => bill.name === SETUP_BILL_NAME);
   const planEndLabel = label(account.planEndDate, { month: 'short', day: 'numeric' });
 
@@ -208,6 +221,24 @@ export function WeekView({
     const result = await onDeleteBill(bill.id);
     if (result.ok) {
       setLastAction({ kind: 'bill', verb: 'Deleted', bill });
+      setDialog(null);
+    }
+    return result;
+  }
+
+  async function handleBillPay(bill: Bill, payment: BillPayment): Promise<SaveResult> {
+    const result = await onPayBill(bill.id, payment);
+    if (result.ok) {
+      setLastAction({ kind: 'billPaid', verb: bill.paidOn ? 'Updated' : 'Paid', name: bill.name, cents: payment.paidCents });
+      setDialog(null);
+    }
+    return result;
+  }
+
+  async function handleBillUndo(bill: Bill): Promise<SaveResult> {
+    const result = await onUndoBillPayment(bill.id);
+    if (result.ok) {
+      setLastAction({ kind: 'billUnpaid', name: bill.name, cents: bill.paidCents ?? 0 });
       setDialog(null);
     }
     return result;
@@ -369,6 +400,19 @@ export function WeekView({
                   Your allowance has not changed; adjust it if you want to.
                 </>
               )}
+              {lastAction?.kind === 'billPaid' && (
+                <>
+                  {lastAction.verb === 'Paid' ? 'Paid' : 'Updated the payment for'} {lastAction.name},{' '}
+                  <Money cents={lastAction.cents} currency={currency} />. Bill payments are not spending, so your weekly
+                  remaining has not changed.
+                </>
+              )}
+              {lastAction?.kind === 'billUnpaid' && (
+                <>
+                  Undid the payment for {lastAction.name}. <Money cents={lastAction.cents} currency={currency} /> is back
+                  in cash and the bill is unpaid again.
+                </>
+              )}
               {lastAction?.kind === 'allowance' && (
                 <>
                   Allowance changed from <Money cents={lastAction.change.fromCents} currency={currency} /> to{' '}
@@ -521,7 +565,7 @@ export function WeekView({
               <>
                 <ul className={styles.activity}>
                   {unpaidBills.map((bill) => (
-                    <li key={bill.id}>
+                    <li key={bill.id} className={styles.billItem}>
                       <button
                         type="button"
                         className={`${styles.activityRow} ${styles.billRow}`}
@@ -544,6 +588,14 @@ export function WeekView({
                           Edit
                         </span>
                       </button>
+                      <button
+                        type="button"
+                        className={styles.payButton}
+                        aria-label={`Pay ${bill.name}`}
+                        onClick={() => setDialog({ mode: 'payBill', bill })}
+                      >
+                        Pay
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -558,6 +610,33 @@ export function WeekView({
             <button type="button" className={styles.addIncome} onClick={() => setDialog({ mode: 'addBill' })}>
               + Add bill
             </button>
+            {paidThisWeek.length > 0 && (
+              <>
+                <h3 className={styles.subTitle}>Paid this week</h3>
+                <ul className={styles.activity}>
+                  {paidThisWeek.map((bill) => (
+                    <li key={bill.id}>
+                      <button
+                        type="button"
+                        className={`${styles.activityRow} ${styles.billRow}`}
+                        onClick={() => setDialog({ mode: 'payBill', bill })}
+                      >
+                        <time className={styles.activityDay} dateTime={bill.paidOn}>
+                          {label(bill.paidOn ?? weekStart, { month: 'short', day: 'numeric' })}
+                        </time>
+                        <span className={styles.merchant}>{bill.name}</span>
+                        <span className={styles.amount}>
+                          <Money cents={bill.paidCents ?? 0} currency={currency} />
+                        </span>
+                        <span className={styles.editHint} aria-hidden="true">
+                          Edit
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
           </section>
 
           <details className={`${styles.section} ${styles.phoneOnly}`}>
@@ -656,6 +735,23 @@ export function WeekView({
           daysLeft={daysLeft}
           onSave={handleBillSave}
           onDelete={handleBillDelete}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.mode === 'payBill' && (
+        <PayBillDialog
+          key={dialog.bill.id}
+          currency={currency}
+          bill={dialog.bill}
+          dates={entryDates}
+          planEndDate={account.planEndDate}
+          planEndLabel={planEndLabel}
+          currentCashCents={currentCashCents}
+          commitmentsCents={account.commitmentsCents}
+          freeCents={freeCents}
+          remainingCents={summary.remainingCents}
+          onPay={handleBillPay}
+          onUndo={handleBillUndo}
           onClose={() => setDialog(null)}
         />
       )}

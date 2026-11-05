@@ -36,7 +36,6 @@ async function createAccount(user: TestUser): Promise<string> {
       opening_date: MONDAY,
       opening_cash_cents: 100000,
       opening_protected_cents: 20000,
-      commitments_cents: 20000,
       plan_end_date: '2026-11-29',
     })
     .select('id')
@@ -261,7 +260,6 @@ describe('the database rejects impossible values on its own', () => {
       opening_date: MONDAY,
       opening_cash_cents: 0,
       opening_protected_cents: 0,
-      commitments_cents: 0,
       plan_end_date: '2026-11-29',
     })
     expect(error?.code).toBe(CHECK)

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { addBillOnce, billPaymentsCents, previewBillChange, removeBill, unpaidBillsCents, updateBill, type Bill } from './bills';
+import { addBillOnce, billPaymentsCents, previewBillChange, previewBillPayment, removeBill, undoPayment, unpaidBillsCents, updateBill, type Bill } from './bills';
 import { demoLedger } from '../fixtures/demoWeek';
 import { freeCashCents } from './allowance';
 import { weekAccount, ledgerReducer, type Ledger, type LedgerAction } from './ledger';
@@ -209,5 +209,108 @@ describe('changing bills in the ledger', () => {
     const deleted = run(monday, { type: 'deleteBill', currency: 'USD', id: 'fee' });
     expect(weekAccount(edited, 'USD').bills).toContainEqual(paidBill);
     expect(weekAccount(deleted, 'USD').bills).toContainEqual(paidBill);
+  });
+});
+
+describe('previewBillPayment', () => {
+  // C 960, B 200 (Rent 150, Phone 50), P 200, F 560.
+  const now = { planEndDate: PLAN_END, currentCashCents: 96000, commitmentsCents: 20000, freeCents: 56000 };
+  const payment = (paidCents: number) => ({ paidOn: '2026-11-05', paidCents });
+
+  test('worked example: paying Rent exactly 150 gives C 810, B 50, F still 560', () => {
+    expect(previewBillPayment({ bill: rent, payment: payment(15000), ...now }).after).toEqual({
+      cashCents: 81000,
+      commitmentsCents: 5000,
+      freeCents: 56000,
+    });
+  });
+
+  test('paying 160 gives C 800, B 50, F 550', () => {
+    expect(previewBillPayment({ bill: rent, payment: payment(16000), ...now }).after).toEqual({
+      cashCents: 80000,
+      commitmentsCents: 5000,
+      freeCents: 55000,
+    });
+  });
+
+  test('paying 140 gives back the difference: C 820, B 50, F 570', () => {
+    expect(previewBillPayment({ bill: rent, payment: payment(14000), ...now }).after).toEqual({
+      cashCents: 82000,
+      commitmentsCents: 5000,
+      freeCents: 57000,
+    });
+  });
+
+  test('a bill due after the plan end was not counted, so paying it takes it all from free cash', () => {
+    const later = { ...rent, dueOn: '2026-12-15' };
+    expect(previewBillPayment({ bill: later, payment: payment(15000), ...now }).after).toEqual({
+      cashCents: 81000,
+      commitmentsCents: 20000,
+      freeCents: 41000,
+    });
+  });
+
+  test('correcting a payment from 160 to 150 moves only cash and free cash, by 10', () => {
+    const afterPaying = { currentCashCents: 80000, commitmentsCents: 5000, freeCents: 55000, planEndDate: PLAN_END };
+    expect(previewBillPayment({ bill: paid(rent, '2026-11-05', 16000), payment: payment(15000), ...afterPaying }).after).toEqual({
+      cashCents: 81000,
+      commitmentsCents: 5000,
+      freeCents: 56000,
+    });
+  });
+
+  test('undoing leaves a bill with no payment details at all', () => {
+    expect(undoPayment(paid(rent, '2026-11-05', 16000))).toEqual(rent);
+  });
+});
+
+describe('paying bills in the ledger', () => {
+  const run = (state: Ledger, ...actions: LedgerAction[]) => actions.reduce(ledgerReducer, state);
+  const toMonday: LedgerAction[] = Array.from({ length: 4 }, () => ({ type: 'nextDay' }));
+  const pay = (paidCents: number, paidOn = '2026-11-05'): LedgerAction => ({ type: 'payBill', currency: 'USD', id: 'usd-bill-1', payment: { paidOn, paidCents } });
+  const undo: LedgerAction = { type: 'undoBillPayment', currency: 'USD', id: 'usd-bill-1' };
+
+  test('paying 150 lowers B and records it this week, and spending and the allowance stay put', () => {
+    const before = weekAccount(demoLedger, 'USD');
+    const after = weekAccount(run(demoLedger, pay(15000)), 'USD');
+    expect(after.commitmentsCents).toBe(5000);
+    expect(after.billPaymentsThisWeekCents).toBe(15000);
+    expect(after.weekStartCashCents).toBe(before.weekStartCashCents);
+    expect(after.purchases).toEqual(before.purchases);
+    expect(after.chosenAllowanceCents).toBe(before.chosenAllowanceCents);
+  });
+
+  test('a retry after a lost reply takes the money out once', () => {
+    expect(weekAccount(run(demoLedger, pay(15000), pay(15000)), 'USD').billPaymentsThisWeekCents).toBe(15000);
+  });
+
+  test('USD payments leave BSD alone', () => {
+    expect(weekAccount(run(demoLedger, pay(15000)), 'BSD')).toEqual(weekAccount(demoLedger, 'BSD'));
+  });
+
+  test('undoing puts everything back', () => {
+    expect(weekAccount(run(demoLedger, pay(16000), undo), 'USD')).toEqual(weekAccount(demoLedger, 'USD'));
+  });
+
+  test('a date still to come, or before this week, changes nothing', () => {
+    expect(weekAccount(run(demoLedger, pay(15000, '2026-11-06')), 'USD').commitmentsCents).toBe(20000);
+    expect(weekAccount(run(demoLedger, pay(15000, '2026-11-01')), 'USD').commitmentsCents).toBe(20000);
+  });
+
+  test('next week: the payment has moved into the starting cash, and closure is as it would be without it', () => {
+    const account = weekAccount(run(demoLedger, pay(15000), ...toMonday), 'USD');
+    // 1,000 - 40 of purchases - 150 for the bill.
+    expect(account.weekStartCashCents).toBe(81000);
+    expect(account.billPaymentsThisWeekCents).toBe(0);
+    expect(account.previousClosure).toMatchObject({ spentCents: 4000, protectedCents: 11000 });
+    // Free cash 810 - 310 - 50 = 450 over 21 days, 7 of them this week.
+    expect(account.recommendedAllowanceCents).toBe(15000);
+  });
+
+  test('once its week has closed a payment cannot be changed or undone', () => {
+    const monday = run(demoLedger, pay(15000), ...toMonday);
+    const bill = () => weekAccount(monday, 'USD').bills.find((b) => b.id === 'usd-bill-1');
+    expect(weekAccount(run(monday, undo), 'USD').bills).toContainEqual(bill());
+    expect(weekAccount(run(monday, pay(1, '2026-11-09')), 'USD').bills).toContainEqual(bill());
   });
 });

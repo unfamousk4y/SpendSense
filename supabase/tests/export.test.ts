@@ -107,9 +107,11 @@ describe('exporting a student’s own data', () => {
       opening_date: WEEK_1,
       opening_cash_cents: 100000,
       opening_protected_cents: 20000,
-      commitments_cents: 20000,
       plan_end_date: '2026-11-15',
     })
+    expect(file.accounts[0]).not.toHaveProperty('commitments_cents')
+    expect(file.bills).toHaveLength(1)
+    expect(file.bills[0]).toMatchObject({ name: 'Bills from setup', due_on: '2026-11-15', cents: 20000, paid_on: null, paid_cents: null })
     expect(file.purchases.map((row) => row.cents).toSorted((x, y) => Number(x) - Number(y))).toEqual(
       purchaseCents.toSorted((x, y) => x - y),
     )

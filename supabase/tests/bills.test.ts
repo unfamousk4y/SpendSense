@@ -2,7 +2,7 @@
 // publishable key only. Fictional data only.
 import { createClient } from '@supabase/supabase-js'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
-import { createAccount, deleteBillRow, exportOwnData, insertBill, loadLedger, saveAllowanceChange, updateBillRow, type NewAccount } from '../../src/data/ledgerStore'
+import { createAccount, deleteBillRow, exportOwnData, insertBill, loadLedger, payBillRow, saveAllowanceChange, undoBillPaymentRow, updateBillRow, type NewAccount } from '../../src/data/ledgerStore'
 import type { Bill } from '../../src/domain/bills'
 import { weekAccount } from '../../src/domain/ledger'
 import { signIn, type TestUser } from './clients.ts'
@@ -381,5 +381,66 @@ describe('saving bills through the data layer', () => {
     await deleteBillRow(b.client, bill.id)
     expect(await bills(a)).toEqual([bill])
     expect(await bills(b)).toEqual([])
+  })
+})
+
+describe('paying through the data layer', () => {
+  let accountId: string
+  const rent: Bill = { id: '', name: 'Fictional rent', dueOn: '2026-11-01', cents: 15000 }
+  let bill: Bill
+
+  beforeEach(async () => {
+    accountId = await start(a)
+    await start(b)
+    bill = { ...rent, id: crypto.randomUUID() }
+    await insertBill(a.client, accountId, bill)
+  })
+
+  test('the payment comes back on the bill, with the worked example numbers', async () => {
+    expect(await payBillRow(a.client, bill.id, { paidOn: WEEK_1, paidCents: 16000 })).toEqual({ ok: true })
+    const week = weekAccount((await load(a)).ledger, 'USD')
+    expect(week.bills).toEqual([{ ...bill, paidOn: WEEK_1, paidCents: 16000 }])
+    expect(week.billPaymentsThisWeekCents).toBe(16000)
+    expect(week.commitmentsCents).toBe(0)
+  })
+
+  test('saving the same payment again takes the money out once', async () => {
+    await payBillRow(a.client, bill.id, { paidOn: WEEK_1, paidCents: 15000 })
+    expect(await payBillRow(a.client, bill.id, { paidOn: WEEK_1, paidCents: 15000 })).toEqual({ ok: true })
+    expect(weekAccount((await load(a)).ledger, 'USD').billPaymentsThisWeekCents).toBe(15000)
+  })
+
+  test('undoing makes it unpaid again, and undoing twice still succeeds', async () => {
+    await payBillRow(a.client, bill.id, { paidOn: WEEK_1, paidCents: 15000 })
+    expect(await undoBillPaymentRow(a.client, bill.id)).toEqual({ ok: true })
+    expect(await undoBillPaymentRow(a.client, bill.id)).toEqual({ ok: true })
+    const week = weekAccount((await load(a)).ledger, 'USD')
+    expect(week.bills).toEqual([bill])
+    expect(week.commitmentsCents).toBe(15000)
+  })
+
+  test('a date still to come gets its own message', async () => {
+    const future = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10)
+    expect(await payBillRow(a.client, bill.id, { paidOn: future, paidCents: 15000 })).toEqual({
+      ok: false,
+      message: 'A payment can only be recorded once it has been made.',
+    })
+  })
+
+  test('a closed week gets its own message, for paying and for undoing', async () => {
+    const closed = 'That week is closed, so it can no longer be changed. Reload the page to see the latest.'
+    const other: Bill = { ...rent, id: crypto.randomUUID() }
+    await insertBill(a.client, accountId, other)
+    await payBillRow(a.client, bill.id, { paidOn: WEEK_1, paidCents: 15000 })
+    await load(a, WEEK_2) // Closes week 1.
+    expect(await payBillRow(a.client, other.id, { paidOn: WEEK_1, paidCents: 15000 })).toEqual({ ok: false, message: closed })
+    expect(await undoBillPaymentRow(a.client, bill.id)).toEqual({ ok: false, message: closed })
+  })
+
+  test("B cannot pay or undo A's bill through the data layer", async () => {
+    expect((await payBillRow(b.client, bill.id, { paidOn: WEEK_1, paidCents: 1 })).ok).toBe(false)
+    await payBillRow(a.client, bill.id, { paidOn: WEEK_1, paidCents: 15000 })
+    expect((await undoBillPaymentRow(b.client, bill.id)).ok).toBe(false)
+    expect(weekAccount((await load(a)).ledger, 'USD').billPaymentsThisWeekCents).toBe(15000)
   })
 })

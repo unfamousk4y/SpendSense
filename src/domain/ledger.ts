@@ -10,7 +10,17 @@
 // Current cash and protected savings are worked out from them when needed.
 import { freeCashCents, suggestAllowance } from './allowance';
 import { currentAllowanceCents, recordAllowanceChange, type AllowanceChange } from './allowanceChange';
-import { addBillOnce, billPaymentsCents, removeBill, unpaidBillsCents, updateBill, type Bill } from './bills';
+import {
+  addBillOnce,
+  billPaymentsCents,
+  recordPayment,
+  removeBill,
+  undoPayment,
+  unpaidBillsCents,
+  updateBill,
+  type Bill,
+  type BillPayment,
+} from './bills';
 import { closeWeek, type WeekClosure } from './closure';
 import { addDays, mondayOf, planDays, type IsoDate } from './dates';
 import { addIncomeOnce, removeIncome, sumIncome, updateIncome, type IncomeReceipt } from './income';
@@ -70,6 +80,8 @@ export type LedgerAction =
   | { type: 'addBill'; currency: Currency; bill: Bill }
   | { type: 'updateBill'; currency: Currency; bill: Bill }
   | { type: 'deleteBill'; currency: Currency; id: string }
+  | { type: 'payBill'; currency: Currency; id: string; payment: BillPayment }
+  | { type: 'undoBillPayment'; currency: Currency; id: string }
   | { type: 'changeAllowance'; currency: Currency; change: AllowanceChange }
   | { type: 'releaseSavings'; currency: Currency; release: SavingsRelease }
   | { type: 'nextDay' };
@@ -85,6 +97,8 @@ export type WeekAccount = {
   commitmentsCents: number;
   /** Every bill, including paid ones and ones due after the plan end. */
   bills: Bill[];
+  /** What this week's bill payments took out of cash. Not spending. */
+  billPaymentsThisWeekCents: number;
   openingDate: IsoDate;
   planEndDate: IsoDate;
   recommendedAllowanceCents: number;
@@ -186,6 +200,28 @@ export function ledgerReducer(state: Ledger, action: LedgerAction): Ledger {
       return changeAccount(state, action.currency, (account) => ({
         ...account,
         bills: removeBill(account.bills, action.id),
+      }));
+    }
+
+    case 'payBill': {
+      const existing = state.accounts[action.currency];
+      const original = existing?.bills.find((bill) => bill.id === action.id);
+      // Only paid already, today or earlier in the open week. Closed weeks are never edited.
+      if (!existing || !original || !billCanChange(state, existing, original)) return state;
+      if (!isOpenDate(state, existing, action.payment.paidOn)) return state;
+      return changeAccount(state, action.currency, (account) => ({
+        ...account,
+        bills: updateBill(account.bills, recordPayment(original, action.payment)),
+      }));
+    }
+
+    case 'undoBillPayment': {
+      const existing = state.accounts[action.currency];
+      const original = existing?.bills.find((bill) => bill.id === action.id);
+      if (!existing || !original || !billCanChange(state, existing, original)) return state;
+      return changeAccount(state, action.currency, (account) => ({
+        ...account,
+        bills: updateBill(account.bills, undoPayment(original)),
       }));
     }
 
@@ -307,6 +343,7 @@ export function weekAccount(state: Ledger, currency: Currency): WeekAccount {
     protectedCents: protectedCents(account, account.closures),
     commitmentsCents: unpaidBillsCents(account.bills, account.planEndDate),
     bills: account.bills,
+    billPaymentsThisWeekCents: billPaymentsCents(account.bills) - billPaymentsCents(account.bills, weekStart),
     openingDate: account.openingDate,
     planEndDate: account.planEndDate,
     recommendedAllowanceCents: plan.recommendedCents,

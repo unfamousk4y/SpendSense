@@ -7,7 +7,7 @@
 // hold a student's spending. Raw database messages are not shown to students.
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import type { AllowanceChange } from '../domain/allowanceChange';
-import type { Bill } from '../domain/bills';
+import type { Bill, BillPayment } from '../domain/bills';
 import type { CategoryId, NeedOrWant } from '../domain/categories';
 import type { WeekClosure } from '../domain/closure';
 import type { IsoDate } from '../domain/dates';
@@ -335,6 +335,24 @@ export async function updateBillRow(client: SupabaseClient, bill: Bill): Promise
 export async function deleteBillRow(client: SupabaseClient, id: string): Promise<SaveResult> {
   const { error } = await client.from('bills').delete().eq('id', id);
   return error ? { ok: false, message: saveMessage(error) } : { ok: true };
+}
+
+/**
+ * One row update, so cash and unpaid bills change together. Saving the same
+ * payment again changes nothing, so a retry cannot take the money out twice.
+ */
+export async function payBillRow(client: SupabaseClient, id: string, payment: BillPayment): Promise<SaveResult> {
+  return setPayment(client, id, { paid_on: payment.paidOn, paid_cents: payment.paidCents });
+}
+
+export async function undoBillPaymentRow(client: SupabaseClient, id: string): Promise<SaveResult> {
+  return setPayment(client, id, { paid_on: null, paid_cents: null });
+}
+
+async function setPayment(client: SupabaseClient, id: string, columns: { paid_on: string | null; paid_cents: number | null }): Promise<SaveResult> {
+  const { data, error } = await client.from('bills').update(columns).eq('id', id).select('id');
+  if (error) return { ok: false, message: saveMessage(error) };
+  return data.length === 1 ? { ok: true } : { ok: false, message: 'That bill no longer exists. Reload the page to see the latest.' };
 }
 
 function billColumns(bill: Bill) {

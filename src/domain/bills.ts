@@ -97,3 +97,48 @@ export function updateBill(bills: Bill[], bill: Bill): Bill[] {
 export function removeBill(bills: Bill[], id: string): Bill[] {
   return bills.filter((existing) => existing.id !== id);
 }
+
+export type BillPayment = { paidOn: IsoDate; paidCents: number };
+
+export type PaymentSide = { cashCents: number; commitmentsCents: number; freeCents: number };
+
+/**
+ * What paying a bill does, or correcting a payment already made. Paid exactly
+ * as expected, C and B fall together and F does not move. Anything different
+ * from what B had reserved moves F by that difference.
+ */
+export function previewBillPayment({
+  bill,
+  payment,
+  planEndDate,
+  currentCashCents,
+  commitmentsCents,
+  freeCents,
+}: {
+  bill: Bill;
+  payment: BillPayment;
+  planEndDate: IsoDate;
+  currentCashCents: number;
+  commitmentsCents: number;
+  freeCents: number;
+}): { before: PaymentSide; after: PaymentSide } {
+  const paidBill = recordPayment(bill, payment);
+  const cashChange = billPaymentsCents([bill]) - billPaymentsCents([paidBill]);
+  const commitmentsChange = unpaidBillsCents([paidBill], planEndDate) - unpaidBillsCents([bill], planEndDate);
+  return {
+    before: { cashCents: currentCashCents, commitmentsCents, freeCents },
+    after: {
+      cashCents: currentCashCents + cashChange,
+      commitmentsCents: commitmentsCents + commitmentsChange,
+      freeCents: freeCents + cashChange - commitmentsChange,
+    },
+  };
+}
+
+export function recordPayment(bill: Bill, payment: BillPayment): Bill {
+  return { ...bill, ...payment };
+}
+
+export function undoPayment({ id, name, dueOn, cents }: Bill): Bill {
+  return { id, name, dueOn, cents };
+}
