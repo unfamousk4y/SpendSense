@@ -364,11 +364,18 @@ export function WeekView({
             </button>
           ))}
         </div>
-        <p className={styles.weekDates}>
-          <time dateTime={weekStart}>{label(weekStart, { weekday: 'short', month: 'short', day: 'numeric' })}</time>
-          {' to '}
-          <time dateTime={weekEnd}>{label(weekEnd, { weekday: 'short', month: 'short', day: 'numeric' })}</time>
-        </p>
+        <div className={styles.dates}>
+          <p className={styles.weekDates}>
+            <time dateTime={weekStart}>{label(weekStart, { weekday: 'short', month: 'short', day: 'numeric' })}</time>
+            {' to '}
+            <time dateTime={weekEnd}>{label(weekEnd, { weekday: 'short', month: 'short', day: 'numeric' })}</time>
+          </p>
+          {/* The week above always runs Monday to Sunday; the plan can end on any day. */}
+          <p className={styles.weekDates}>
+            {today > account.planEndDate ? 'Plan ended ' : 'Plan runs until '}
+            <time dateTime={account.planEndDate}>{planEndLabel}</time>
+          </p>
+        </div>
       </header>
 
       <main className={styles.layout}>
