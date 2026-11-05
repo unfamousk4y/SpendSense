@@ -134,6 +134,22 @@
   font-size: 0.9375rem;
 }
 
+/* The plan's end date has arrived: everything still works, with a way forward. */
+.planEnding {
+  margin-bottom: 20px;
+  padding-left: 10px;
+  border-left: 3px solid var(--accent);
+}
+
+.planEnding .addIncome {
+  margin-top: 8px;
+}
+
+.planEndingText {
+  margin: 0;
+  font-weight: 650;
+}
+
 .note {
   margin: 12px 0 0;
   padding-left: 10px;

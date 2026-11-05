@@ -123,3 +123,8 @@
   min-height: 44px;
   cursor: pointer;
 }
+
+.billList {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}

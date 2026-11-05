@@ -26,6 +26,7 @@ import { closeWeek, type WeekClosure } from './closure';
 import { addDays, mondayOf, planDays, type IsoDate } from './dates';
 import { addIncomeOnce, removeIncome, sumIncome, updateIncome, type IncomeReceipt } from './income';
 import type { Currency } from './money';
+import { canStartNewPlan } from './newPlan';
 import { previewRelease, recordRelease, type SavingsRelease } from './release';
 import { addPurchaseOnce, removePurchase, updatePurchase, type Purchase } from './week';
 
@@ -84,6 +85,7 @@ export type LedgerAction =
   | { type: 'payBill'; currency: Currency; id: string; payment: BillPayment }
   | { type: 'payBillKeepRest'; currency: Currency; id: string; payment: BillPayment; restId: string }
   | { type: 'undoBillPayment'; currency: Currency; id: string }
+  | { type: 'startNewPlan'; currency: Currency; endDate: IsoDate; week?: WeekPlan }
   | { type: 'changeAllowance'; currency: Currency; change: AllowanceChange }
   | { type: 'releaseSavings'; currency: Currency; release: SavingsRelease }
   | { type: 'nextDay' };
@@ -241,6 +243,20 @@ export function ledgerReducer(state: Ledger, action: LedgerAction): Ledger {
       }));
     }
 
+    case 'startNewPlan': {
+      const existing = state.accounts[action.currency];
+      if (!existing || action.endDate < state.today) return state;
+      // A plan still running stays as it is. The same end date is a repeated save.
+      if (!canStartNewPlan(existing.planEndDate, state.today) && existing.planEndDate !== action.endDate) return state;
+      return changeAccount(state, action.currency, (account) => ({
+        ...account,
+        planEndDate: action.endDate,
+        // A week that has a plan keeps it: allowances never change by themselves.
+        weeks:
+          action.week && !hasPlanThisWeek(account, state.today) ? [...account.weeks, action.week] : account.weeks,
+      }));
+    }
+
     case 'changeAllowance': {
       const weekStart = mondayOf(state.today);
       return changeAccount(state, action.currency, (account) => ({
@@ -281,11 +297,9 @@ export function ledgerReducer(state: Ledger, action: LedgerAction): Ledger {
  * returned state.
  */
 function advanceDay(state: Ledger): Ledger {
-  // The demo stops at the earliest plan end; a new plan is out of scope.
-  const lastDay = presentAccounts(state)
-    .map((account) => account.planEndDate)
-    .sort()[0];
-  if (state.today >= lastDay) return state;
+  // The demo waits once no account has a plan this week: its next step is
+  // starting a new one, not another day.
+  if (!presentAccounts(state).some((account) => hasPlanThisWeek(account, state.today))) return state;
 
   const tomorrow = addDays(state.today, 1);
   const endedWeek = mondayOf(state.today);
@@ -431,6 +445,12 @@ function cashParts(account: AccountLedger, closures: WeekClosure[]) {
     protectedCents: protectedCents(account, closures),
     commitmentsCents: unpaidBillsCents(account.bills, account.planEndDate),
   };
+}
+
+/** Current cash and protected savings, which a new plan carries over as they are. */
+export function accountCash(account: AccountLedger): { currentCashCents: number; protectedCents: number } {
+  const { currentCashCents, protectedCents } = cashParts(account, account.closures);
+  return { currentCashCents, protectedCents };
 }
 
 function protectedCents(account: AccountLedger, closures: WeekClosure[]): number {

@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { parseAmount, type AmountParseResult } from '../../domain/amount';
+import { parseAmount, centsOrZero } from '../../domain/amount';
 import type { IsoDate } from '../../domain/dates';
 import { formatCents, type Currency } from '../../domain/money';
 import { firstAllowanceFits, previewSetup } from '../../domain/setup';
@@ -19,13 +19,6 @@ type SetupScreenProps = {
 };
 
 const CURRENCIES: Currency[] = ['USD', 'BSD'];
-
-/** Cents for an amount where 0 is a real answer; null if the text is not an amount. */
-function centsOrZero(result: AmountParseResult): number | null {
-  if (result.kind === 'ok') return result.cents;
-  // parseAmount reports "0" as notPositive; the text cannot hold a minus sign.
-  return result.reason === 'notPositive' ? 0 : null;
-}
 
 /** Blank means 0 for the optional amounts. */
 const optionalCents = (text: string) => (text.trim() === '' ? 0 : centsOrZero(parseAmount(text)));

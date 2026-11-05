@@ -11,16 +11,6 @@
   margin: 0;
 }
 
-.heading {
-  margin: 0;
-  font-size: 1.25rem;
-}
-
-.switch {
-  display: flex;
-  gap: 8px;
-}
-
 .button {
   min-width: 64px;
   min-height: 44px;
@@ -32,8 +22,4 @@
   font: inherit;
   font-weight: 650;
   cursor: pointer;
-}
-
-.button[aria-pressed='true'] {
-  background: var(--accent-soft);
 }

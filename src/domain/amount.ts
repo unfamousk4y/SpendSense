@@ -73,3 +73,10 @@ export function parseAmount(text: string): AmountParseResult {
 function invalid(reason: AmountInvalidReason): AmountParseResult {
   return { kind: 'invalid', reason };
 }
+
+/** Cents for an amount where 0 is a real answer; null if the text is not an amount. */
+export function centsOrZero(result: AmountParseResult): number | null {
+  if (result.kind === 'ok') return result.cents;
+  // parseAmount reports "0" as notPositive; the text cannot hold a minus sign.
+  return result.reason === 'notPositive' ? 0 : null;
+}

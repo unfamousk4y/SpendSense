@@ -67,6 +67,8 @@ function saveMessage(error: PostgrestError): string {
       return 'Income can only be recorded once it has been received.';
     case 'SS005':
       return 'A payment can only be recorded once it has been made.';
+    case 'SS006':
+      return 'Your plan is still running. Reload the page to see the latest.';
     default:
       return SAVE_FAILED;
   }
@@ -296,6 +298,28 @@ export async function saveRelease(client: SupabaseClient, accountId: string, rel
     p_account_id: accountId,
     p_made_on: release.madeOn,
     p_cents: release.cents,
+  });
+  return error ? { ok: false, message: saveMessage(error) } : { ok: true };
+}
+
+/**
+ * Moves the plan's end date and, if this week has no plan yet, creates it, in
+ * one transaction. The database re-checks the rules, and saving it again
+ * changes nothing. A week that has a plan keeps its allowance.
+ */
+export async function startNewPlan(
+  client: SupabaseClient,
+  accountId: string,
+  today: IsoDate,
+  endDate: IsoDate,
+  week?: { recommendedCents: number; allowanceCents: number },
+): Promise<SaveResult> {
+  const { error } = await client.rpc('start_new_plan', {
+    p_account_id: accountId,
+    p_today: today,
+    p_end_date: endDate,
+    p_recommended_cents: week?.recommendedCents ?? null,
+    p_starting_allowance_cents: week?.allowanceCents ?? null,
   });
   return error ? { ok: false, message: saveMessage(error) } : { ok: true };
 }

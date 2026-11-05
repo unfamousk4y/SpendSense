@@ -98,14 +98,16 @@ describe('ledger: moving through the week', () => {
     });
   });
 
-  test('stops at the plan end date: three weeks closed by Sun Nov 29, then nothing changes', () => {
-    const end = run(demoLedger, ...nextDays(24));
-    expect(end.today).toBe('2026-11-29');
+  test('passes the plan end date: the last week closes on Mon Nov 30, with no new plan, and then the demo waits', () => {
+    const end = run(demoLedger, ...nextDays(25));
+    expect(end.today).toBe('2026-11-30');
     expect(end.accounts.USD!.closures.map((closure) => closure.weekStart)).toEqual([
       '2026-11-02',
       '2026-11-09',
       '2026-11-16',
+      '2026-11-23',
     ]);
+    expect(end.accounts.USD!.weeks.some((week) => week.weekStart === '2026-11-30')).toBe(false);
     expect(ledgerReducer(end, { type: 'nextDay' })).toBe(end);
   });
 });

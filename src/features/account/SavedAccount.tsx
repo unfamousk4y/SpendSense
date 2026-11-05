@@ -13,6 +13,7 @@ import {
   payBillRow,
   saveAllowanceChange,
   saveRelease,
+  startNewPlan,
   undoBillPaymentRow,
   updateBillRow,
   updateIncomeRow,
@@ -30,6 +31,7 @@ import type { SavingsRelease } from '../../domain/release';
 import type { Purchase } from '../../domain/week';
 import { MotionProvider } from '../../ui/MotionProvider';
 import { SetupScreen } from '../setup/SetupScreen';
+import { PlanEndedScreen } from '../week/PlanEndedScreen';
 import { WeekView } from '../week/WeekView';
 import styles from './SavedAccount.module.css';
 
@@ -108,6 +110,7 @@ type SavedWeekProps = SavedAccountProps & {
   today: IsoDate;
   currency: Currency;
   onCurrencyChange: (currency: Currency) => void;
+  /** Load everything again, for a change that creates rows the screen needs the ids of. */
   onAccountCreated: () => void;
 };
 
@@ -137,18 +140,18 @@ function SavedWeek({ client, loaded, today, currency, onCurrencyChange, onAccoun
 
   if (!hasPlanThisWeek(account, today) || !weekPlanId) {
     return (
-      <div className={styles.message}>
-        <h1 className={styles.heading}>Your {currency} plan has ended</h1>
-        <p>It ran until {account.planEndDate}. Starting a new plan is not available yet.</p>
-        <div className={styles.switch}>
-          {(['USD', 'BSD'] as const).map((option) => (
-            <button key={option} type="button" className={styles.button} aria-pressed={option === currency} onClick={() => onCurrencyChange(option)}>
-              {option}
-            </button>
-          ))}
-        </div>
-        {accountControls}
-      </div>
+      <PlanEndedScreen
+        account={account}
+        today={today}
+        onCurrencyChange={onCurrencyChange}
+        onStart={async (endDate, week) => {
+          const result = await startNewPlan(client, accountId, today, endDate, week);
+          // Load again: the new week plan's id is needed to change its allowance later.
+          if (result.ok) onAccountCreated();
+          return result;
+        }}
+        accountControls={accountControls}
+      />
     );
   }
 
@@ -192,6 +195,9 @@ function SavedWeek({ client, loaded, today, currency, onCurrencyChange, onAccoun
           saveThenApply(payBillKeepRest(client, id, payment, restId), { type: 'payBillKeepRest', currency, id, payment, restId })
         }
         onUndoBillPayment={(id: string) => saveThenApply(undoBillPaymentRow(client, id), { type: 'undoBillPayment', currency, id })}
+        onStartNewPlan={(endDate: IsoDate) =>
+          saveThenApply(startNewPlan(client, accountId, today, endDate), { type: 'startNewPlan', currency, endDate })
+        }
         onChangeAllowance={(change: AllowanceChange) =>
           saveThenApply(saveAllowanceChange(client, weekPlanId, change), { type: 'changeAllowance', currency, change })
         }

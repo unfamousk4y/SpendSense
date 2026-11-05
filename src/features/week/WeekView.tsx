@@ -19,8 +19,10 @@ import { BillDialog } from './BillDialog';
 import { CalculationBreakdown } from './CalculationBreakdown';
 import { IncomeDialog } from './IncomeDialog';
 import { ClosureSummary } from './ClosureSummary';
+import { NewPlanDialog } from './NewPlanDialog';
 import { PayBillDialog } from './PayBillDialog';
 import { moneyFlow } from '../../domain/moneyFlow';
+import { canStartNewPlan } from '../../domain/newPlan';
 import { CashPanel } from './CashPanel';
 import { MoneyFlow } from './MoneyFlow';
 import { ExpandedCashView } from './ExpandedCashView';
@@ -46,6 +48,7 @@ type WeekViewProps = {
   onPayBill: (id: string, payment: BillPayment) => Promise<SaveResult>;
   onPayBillKeepRest: (id: string, payment: BillPayment, restId: string) => Promise<SaveResult>;
   onUndoBillPayment: (id: string) => Promise<SaveResult>;
+  onStartNewPlan: (endDate: IsoDate) => Promise<SaveResult>;
   onChangeAllowance: (change: AllowanceChange) => Promise<SaveResult>;
   onReleaseSavings: (release: SavingsRelease) => Promise<SaveResult>;
   /** Present only on the fictional demo: move the date forward one day. */
@@ -63,6 +66,7 @@ type DialogState =
   | { mode: 'addBill' }
   | { mode: 'editBill'; bill: Bill }
   | { mode: 'payBill'; bill: Bill }
+  | { mode: 'newPlan' }
   | { mode: 'allowance' }
   | { mode: 'release' }
   | null;
@@ -81,6 +85,7 @@ type LastAction =
   | { kind: 'bill'; verb: 'Added' | 'Updated' | 'Deleted'; bill: Bill }
   | { kind: 'billPaid'; verb: 'Paid' | 'Updated'; name: string; cents: number; restCents?: number }
   | { kind: 'billUnpaid'; name: string; cents: number }
+  | { kind: 'newPlan'; endLabel: string }
   | { kind: 'allowance'; change: AllowanceChange }
   | { kind: 'release'; release: SavingsRelease }
   | null;
@@ -108,6 +113,7 @@ export function WeekView({
   onPayBill,
   onPayBillKeepRest,
   onUndoBillPayment,
+  onStartNewPlan,
   onChangeAllowance,
   onReleaseSavings,
   onNextDay,
@@ -166,7 +172,7 @@ export function WeekView({
   const { daysThisWeek, daysLeft } = planDays(today, account.planEndDate);
   const suggestion = midweekSuggestion({ spentCents: summary.spentCents, freeCents, daysThisWeek, daysLeft });
   const lastChange = account.allowanceChanges.at(-1);
-  const planEnded = today >= account.planEndDate;
+  const canStartPlan = canStartNewPlan(account.planEndDate, today);
 
   // The form closes and the confirmation shows only after a confirmed save. A
   // failure goes back to the form, which keeps what was typed.
@@ -252,6 +258,15 @@ export function WeekView({
     return result;
   }
 
+  async function handleNewPlan(endDate: IsoDate): Promise<SaveResult> {
+    const result = await onStartNewPlan(endDate);
+    if (result.ok) {
+      setLastAction({ kind: 'newPlan', endLabel: label(endDate, { month: 'short', day: 'numeric' }) });
+      setDialog(null);
+    }
+    return result;
+  }
+
   async function handleAllowanceSave(change: AllowanceChange): Promise<SaveResult> {
     const result = await onChangeAllowance(change);
     if (result.ok) {
@@ -328,13 +343,9 @@ export function WeekView({
             <span>
               Demo date: <time dateTime={today}>{label(today, { weekday: 'short', month: 'short', day: 'numeric' })}</time>
             </span>
-            {planEnded ? (
-              <span>Plan ends today</span>
-            ) : (
-              <button type="button" className={styles.nextDay} onClick={handleNextDay}>
-                Next day
-              </button>
-            )}
+            <button type="button" className={styles.nextDay} onClick={handleNextDay}>
+              Next day
+            </button>
           </div>
         </div>
       )}
@@ -370,6 +381,16 @@ export function WeekView({
               protectedNowCents={account.protectedCents}
               onAdjust={() => setDialog({ mode: 'allowance' })}
             />
+          )}
+          {canStartPlan && (
+            <div className={styles.planEnding} role="group" aria-labelledby="plan-ending-text">
+              <p id="plan-ending-text" className={styles.planEndingText}>
+                {today === account.planEndDate ? 'Your plan ends today.' : `Your plan ended on ${planEndLabel}.`}
+              </p>
+              <button type="button" className={styles.addIncome} onClick={() => setDialog({ mode: 'newPlan' })}>
+                Start a new plan
+              </button>
+            </div>
           )}
           <section aria-labelledby="remaining-heading">
             <h1 id="remaining-heading" className={styles.eyebrow}>
@@ -425,6 +446,9 @@ export function WeekView({
                   Undid the payment for {lastAction.name}. <Money cents={lastAction.cents} currency={currency} /> is back
                   in cash and the bill is unpaid again.
                 </>
+              )}
+              {lastAction?.kind === 'newPlan' && (
+                <>New plan saved, running until {lastAction.endLabel}. Your allowance has not changed; adjust it if you want to.</>
               )}
               {lastAction?.kind === 'allowance' && (
                 <>
@@ -765,6 +789,19 @@ export function WeekView({
           remainingCents={summary.remainingCents}
           onPay={handleBillPay}
           onUndo={handleBillUndo}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.mode === 'newPlan' && (
+        <NewPlanDialog
+          currency={currency}
+          today={today}
+          currentCashCents={currentCashCents}
+          protectedCents={account.protectedCents}
+          bills={account.bills}
+          spentCents={summary.spentCents}
+          currentAllowanceCents={account.chosenAllowanceCents}
+          onStart={(endDate) => handleNewPlan(endDate)}
           onClose={() => setDialog(null)}
         />
       )}

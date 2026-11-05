@@ -4,8 +4,10 @@ import { supabase } from './data/supabaseClient';
 import { SavedAccount } from './features/account/SavedAccount';
 import { SignInScreen } from './auth/SignInScreen';
 import { useAuth } from './auth/useAuth';
-import { ledgerReducer, weekAccount, type LedgerAction } from './domain/ledger';
+import { hasPlanThisWeek, ledgerReducer, weekAccount, type LedgerAction } from './domain/ledger';
+import { mondayOf } from './domain/dates';
 import type { Currency } from './domain/money';
+import { PlanEndedScreen } from './features/week/PlanEndedScreen';
 import { WeekView } from './features/week/WeekView';
 import { demoLedger } from './fixtures/demoWeek';
 import { MotionProvider } from './ui/MotionProvider';
@@ -51,13 +53,37 @@ function DemoWeek() {
   // Which account is on screen is a viewing choice, not part of the ledger.
   const [currency, setCurrency] = useState<Currency>('USD');
 
-  const account = weekAccount(ledger, currency);
-
   // Nothing to wait for: the demo is held in memory.
   function applied(action: LedgerAction) {
     dispatch(action);
     return Promise.resolve({ ok: true } as const);
   }
+
+  const ledgerAccount = ledger.accounts[currency];
+  if (ledgerAccount && !hasPlanThisWeek(ledgerAccount, ledger.today)) {
+    return (
+      <PlanEndedScreen
+        account={ledgerAccount}
+        today={ledger.today}
+        onCurrencyChange={setCurrency}
+        onStart={(endDate, week) =>
+          applied({
+            type: 'startNewPlan',
+            currency,
+            endDate,
+            week: week && {
+              weekStart: mondayOf(ledger.today),
+              recommendedCents: week.recommendedCents,
+              startingAllowanceCents: week.allowanceCents,
+              changes: [],
+            },
+          })
+        }
+      />
+    );
+  }
+
+  const account = weekAccount(ledger, currency);
 
   return (
     <MotionProvider>
@@ -77,6 +103,7 @@ function DemoWeek() {
         onPayBill={(id, payment) => applied({ type: 'payBill', currency, id, payment })}
         onPayBillKeepRest={(id, payment, restId) => applied({ type: 'payBillKeepRest', currency, id, payment, restId })}
         onUndoBillPayment={(id) => applied({ type: 'undoBillPayment', currency, id })}
+        onStartNewPlan={(endDate) => applied({ type: 'startNewPlan', currency, endDate })}
         onChangeAllowance={(change) => applied({ type: 'changeAllowance', currency, change })}
         onReleaseSavings={(release) => applied({ type: 'releaseSavings', currency, release })}
         onNextDay={() => dispatch({ type: 'nextDay' })}

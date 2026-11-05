@@ -1,0 +1,39 @@
+.page {
+  display: grid;
+  gap: 16px;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 32px 16px;
+}
+
+.heading {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.switch {
+  display: flex;
+  gap: 8px;
+}
+
+.option {
+  min-width: 64px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.option[aria-pressed='true'] {
+  background: var(--accent-soft);
+}
+
+/* The form brings its own padding for use inside a dialog; here the page has it. */
+.page > form {
+  padding: 0;
+}
