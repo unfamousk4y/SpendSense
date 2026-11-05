@@ -6,10 +6,11 @@
 // (closing a week AND starting the next) come back as one new state, so the
 // screen can never show half of them.
 //
-// Only facts are stored: opening balances, purchases, income, week plans, closures.
+// Only facts are stored: opening balances, purchases, income, bills, week plans, closures.
 // Current cash and protected savings are worked out from them when needed.
 import { freeCashCents, suggestAllowance } from './allowance';
 import { currentAllowanceCents, recordAllowanceChange, type AllowanceChange } from './allowanceChange';
+import { billPaymentsCents, unpaidBillsCents, type Bill } from './bills';
 import { closeWeek, type WeekClosure } from './closure';
 import { addDays, mondayOf, planDays, type IsoDate } from './dates';
 import { addIncomeOnce, removeIncome, sumIncome, updateIncome, type IncomeReceipt } from './income';
@@ -39,9 +40,9 @@ export type AccountLedger = {
   openingCashCents: number;
   /** P on the opening date. Closures add to it. */
   openingProtectedCents: number;
-  /** B: unpaid commitments due by the plan end date. */
-  commitmentsCents: number;
   planEndDate: IsoDate;
+  /** Every bill, paid or not. B is worked out from these. */
+  bills: Bill[];
   /** One plan per week the student actually had, oldest first. */
   weeks: WeekPlan[];
   /** Every recorded purchase, all weeks. */
@@ -77,7 +78,10 @@ export type WeekAccount = {
   /** Cash at the start of Monday: this week's income and spending are not in it. */
   weekStartCashCents: number;
   protectedCents: number;
+  /** B: unpaid bills due by the plan end date. */
   commitmentsCents: number;
+  /** Every bill, including paid ones and ones due after the plan end. */
+  bills: Bill[];
   openingDate: IsoDate;
   planEndDate: IsoDate;
   recommendedAllowanceCents: number;
@@ -269,9 +273,11 @@ export function weekAccount(state: Ledger, currency: Currency): WeekAccount {
     weekStartCashCents:
       account.openingCashCents +
       sumIncome(account.income.filter((receipt) => receipt.date < weekStart)) -
-      sumCents(account.purchases.filter((p) => p.date < weekStart)),
+      sumCents(account.purchases.filter((p) => p.date < weekStart)) -
+      billPaymentsCents(account.bills, weekStart),
     protectedCents: protectedCents(account, account.closures),
-    commitmentsCents: account.commitmentsCents,
+    commitmentsCents: unpaidBillsCents(account.bills, account.planEndDate),
+    bills: account.bills,
     openingDate: account.openingDate,
     planEndDate: account.planEndDate,
     recommendedAllowanceCents: plan.recommendedCents,
@@ -333,9 +339,10 @@ function changeAccount(state: Ledger, currency: Currency, change: (account: Acco
 function cashParts(account: AccountLedger, closures: WeekClosure[]) {
   return {
     // Everything recorded is dated today or earlier, so this is current cash.
-    currentCashCents: account.openingCashCents + sumIncome(account.income) - sumCents(account.purchases),
+    currentCashCents:
+      account.openingCashCents + sumIncome(account.income) - sumCents(account.purchases) - billPaymentsCents(account.bills),
     protectedCents: protectedCents(account, closures),
-    commitmentsCents: account.commitmentsCents,
+    commitmentsCents: unpaidBillsCents(account.bills, account.planEndDate),
   };
 }
 

@@ -107,10 +107,10 @@ describe('income in the ledger', () => {
   });
 
   test('income raises what closure can protect when free cash was the limit', () => {
-    // Commitments are set so free cash without the income would be only 10.
+    // The bill is set so free cash without the income would be only 10.
     const tight: Ledger = {
       ...demoLedger,
-      accounts: { ...demoLedger.accounts, USD: { ...demoLedger.accounts.USD!, commitmentsCents: 75000 } },
+      accounts: { ...demoLedger.accounts, USD: { ...demoLedger.accounts.USD!, bills: [{ id: 'big', name: 'Fictional fee', dueOn: '2026-11-20', cents: 75000 }] } },
     };
     const toMonday: LedgerAction[] = Array.from({ length: 4 }, () => ({ type: 'nextDay' }));
     expect(weekAccount(run(tight, ...toMonday), 'USD').protectedCents).toBe(20000 + 1000);

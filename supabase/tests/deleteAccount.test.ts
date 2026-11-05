@@ -9,7 +9,7 @@ import { signIn, type TestUser } from './clients.ts'
 
 const WEEK_1 = '2026-10-19'
 const WEEK_2 = '2026-10-26'
-const TABLES = ['accounts', 'purchases', 'income_receipts', 'week_plans', 'allowance_changes', 'week_closures', 'savings_releases']
+const TABLES = ['accounts', 'purchases', 'income_receipts', 'bills', 'week_plans', 'allowance_changes', 'week_closures', 'savings_releases']
 
 function newClient(): SupabaseClient {
   return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_PUBLISHABLE_KEY!, {
@@ -67,8 +67,8 @@ async function fillAccount(client: SupabaseClient) {
   if (!release.ok) throw new Error(release.message)
 }
 
-const FULL_ACCOUNT = { accounts: 1, purchases: 2, income_receipts: 1, week_plans: 2, allowance_changes: 1, week_closures: 1, savings_releases: 1 }
-const NOTHING = { accounts: 0, purchases: 0, income_receipts: 0, week_plans: 0, allowance_changes: 0, week_closures: 0, savings_releases: 0 }
+const FULL_ACCOUNT = { accounts: 1, purchases: 2, income_receipts: 1, bills: 1, week_plans: 2, allowance_changes: 1, week_closures: 1, savings_releases: 1 }
+const NOTHING = { accounts: 0, purchases: 0, income_receipts: 0, bills: 0, week_plans: 0, allowance_changes: 0, week_closures: 0, savings_releases: 0 }
 
 let b: TestUser
 

@@ -1,0 +1,334 @@
+// Dated bills through the real data layer, as the test users, using the
+// publishable key only. Fictional data only.
+import { createClient } from '@supabase/supabase-js'
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
+import { createAccount, exportOwnData, loadLedger, saveAllowanceChange, type NewAccount } from '../../src/data/ledgerStore'
+import { weekAccount } from '../../src/domain/ledger'
+import { signIn, type TestUser } from './clients.ts'
+
+let a: TestUser
+let b: TestUser
+
+const WEEK_1 = '2026-10-19'
+const WEEK_2 = '2026-10-26'
+const PLAN_END = '2026-11-15'
+const CLOSED = 'SS001'
+const CHECK = '23514'
+
+// C 960, P 200, with no bills yet.
+const usd: NewAccount = {
+  currency: 'USD',
+  openingDate: WEEK_1,
+  cashCents: 96000,
+  protectedCents: 20000,
+  commitmentsCents: 0,
+  planEndDate: PLAN_END,
+  recommendedCents: 15000,
+  allowanceCents: 15000,
+}
+
+async function reset(user: TestUser) {
+  const { error } = await user.client.from('accounts').delete().eq('user_id', user.userId)
+  if (error) throw new Error(`Cleanup failed: ${error.message}`)
+}
+
+async function load(user: TestUser, today = WEEK_1) {
+  const result = await loadLedger(user.client, today)
+  if (!result.ok) throw new Error(result.message)
+  return result.loaded
+}
+
+async function start(user: TestUser, account: NewAccount = usd): Promise<string> {
+  await reset(user)
+  const created = await createAccount(user.client, account)
+  if (!created.ok) throw new Error(created.message)
+  return (await load(user)).accountIds[account.currency]!
+}
+
+async function addBill(user: TestUser, accountId: string, cents: number, overrides: Record<string, unknown> = {}): Promise<string> {
+  const id = crypto.randomUUID()
+  const { error } = await user.client
+    .from('bills')
+    .insert({ id, account_id: accountId, name: 'Fictional bill', due_on: '2026-11-01', cents, ...overrides })
+  if (error) throw new Error(`Could not add a bill: ${error.message}`)
+  return id
+}
+
+function pay(user: TestUser, id: string, paidOn: string, cents: number) {
+  return user.client.from('bills').update({ paid_on: paidOn, paid_cents: cents }).eq('id', id)
+}
+
+/**
+ * The database's own free cash, found from its allowance rule: with nothing
+ * spent, this allowance fits and one cent more does not.
+ */
+async function expectDatabaseFreeCash(user: TestUser, cents: number) {
+  const plan = (await load(user)).weekPlanIds.USD![WEEK_1]
+  const change = (toCents: number) =>
+    saveAllowanceChange(user.client, plan, { id: crypto.randomUUID(), madeOn: WEEK_1, fromCents: 0, toCents, suggestedCents: null })
+  expect((await change(cents + 1)).ok).toBe(false)
+  expect(await change(cents)).toEqual({ ok: true })
+}
+
+beforeAll(async () => {
+  a = await signIn('A')
+  b = await signIn('B')
+})
+
+afterAll(async () => {
+  if (a) await reset(a)
+  if (b) await reset(b)
+})
+
+describe('setup', () => {
+  test('the total becomes one bill due on the plan end, and the screen numbers are unchanged', async () => {
+    await start(a, { ...usd, commitmentsCents: 20000 })
+    const week = weekAccount((await load(a)).ledger, 'USD')
+    expect(week.commitmentsCents).toBe(20000)
+    expect(week.bills).toEqual([{ id: expect.any(String), name: 'Bills from setup', dueOn: PLAN_END, cents: 20000 }])
+  })
+
+  test('no total means no bill', async () => {
+    await start(a)
+    expect(weekAccount((await load(a)).ledger, 'USD').bills).toEqual([])
+  })
+
+  test('a repeated setup leaves one bill', async () => {
+    await start(a, { ...usd, commitmentsCents: 20000 })
+    expect(await createAccount(a.client, { ...usd, commitmentsCents: 20000 })).toEqual({ ok: true })
+    expect(weekAccount((await load(a)).ledger, 'USD').bills).toHaveLength(1)
+  })
+})
+
+describe('the database counts bills the same way the app does', () => {
+  let accountId: string
+  let rent: string
+
+  beforeEach(async () => {
+    accountId = await start(a)
+    rent = await addBill(a, accountId, 15000)
+    await addBill(a, accountId, 5000)
+  })
+
+  test('worked example: bills of 150 and 50 leave free cash 560', async () => {
+    expect(weekAccount((await load(a)).ledger, 'USD').commitmentsCents).toBe(20000)
+    await expectDatabaseFreeCash(a, 56000)
+  })
+
+  test('paying exactly 150: B 50, free cash still 560', async () => {
+    expect((await pay(a, rent, WEEK_1, 15000)).error).toBeNull()
+    expect(weekAccount((await load(a)).ledger, 'USD').commitmentsCents).toBe(5000)
+    await expectDatabaseFreeCash(a, 56000)
+  })
+
+  test('paying 160 for that bill: B 50, free cash 550', async () => {
+    expect((await pay(a, rent, WEEK_1, 16000)).error).toBeNull()
+    expect(weekAccount((await load(a)).ledger, 'USD').commitmentsCents).toBe(5000)
+    await expectDatabaseFreeCash(a, 55000)
+  })
+
+  test('adding a new 100 bill: free cash 460', async () => {
+    await addBill(a, accountId, 10000)
+    await expectDatabaseFreeCash(a, 46000)
+  })
+
+  test('a bill due after the plan end is not counted, in either place', async () => {
+    await addBill(a, accountId, 10000, { due_on: '2026-11-16' })
+    expect(weekAccount((await load(a)).ledger, 'USD').commitmentsCents).toBe(20000)
+    await expectDatabaseFreeCash(a, 56000)
+  })
+
+  test('a bill due on the plan end, and an overdue one, are counted in both', async () => {
+    await addBill(a, accountId, 1000, { due_on: PLAN_END })
+    await addBill(a, accountId, 2000, { due_on: '2026-01-01' })
+    expect(weekAccount((await load(a)).ledger, 'USD').commitmentsCents).toBe(23000)
+    await expectDatabaseFreeCash(a, 53000)
+  })
+
+  test('a payment leaves next week starting with less cash, and is not spending', async () => {
+    await pay(a, rent, WEEK_1, 16000)
+    const week = weekAccount((await load(a, WEEK_2)).ledger, 'USD')
+    expect(week.weekStartCashCents).toBe(80000)
+    expect(week.previousClosure).toMatchObject({ spentCents: 0, leftoverCents: 15000, protectedCents: 15000 })
+  })
+})
+
+describe('closing a week sees bills as they were then', () => {
+  let accountId: string
+  let bill: string
+
+  beforeEach(async () => {
+    // Free cash 1,000 - 200 = 800 at setup, so 300 fits. The bill then leaves 10.
+    accountId = await start(a, { ...usd, cashCents: 100000, recommendedCents: 30000, allowanceCents: 30000 })
+    bill = await addBill(a, accountId, 79000)
+  })
+
+  test('unpaid: free cash 10 is the limit', async () => {
+    expect(weekAccount((await load(a, WEEK_2)).ledger, 'USD').protectedCents).toBe(20000 + 1000)
+  })
+
+  test('paid after the week ended: it still counted as unpaid for that week', async () => {
+    expect((await pay(a, bill, WEEK_2, 79000)).error).toBeNull()
+    expect(weekAccount((await load(a, WEEK_2)).ledger, 'USD').protectedCents).toBe(20000 + 1000)
+  })
+
+  test('paid during the week, for 10 more than expected: free cash 0 protects nothing', async () => {
+    expect((await pay(a, bill, WEEK_1, 80000)).error).toBeNull()
+    expect(weekAccount((await load(a, WEEK_2)).ledger, 'USD').protectedCents).toBe(20000)
+  })
+})
+
+describe('payments and closed weeks', () => {
+  let accountId: string
+  let paidBill: string
+  let unpaidBill: string
+
+  beforeEach(async () => {
+    accountId = await start(a)
+    paidBill = await addBill(a, accountId, 15000)
+    unpaidBill = await addBill(a, accountId, 5000)
+    await pay(a, paidBill, WEEK_1, 15000)
+    await load(a, WEEK_2) // Closes week 1.
+  })
+
+  test('a payment in a closed week cannot be changed, undone or deleted', async () => {
+    expect((await pay(a, paidBill, WEEK_1, 1)).error?.code).toBe(CLOSED)
+    expect((await pay(a, paidBill, WEEK_2, 15000)).error?.code).toBe(CLOSED)
+    expect((await a.client.from('bills').update({ paid_on: null, paid_cents: null }).eq('id', paidBill)).error?.code).toBe(CLOSED)
+    expect((await a.client.from('bills').update({ name: 'Changed' }).eq('id', paidBill)).error?.code).toBe(CLOSED)
+    expect((await a.client.from('bills').delete().eq('id', paidBill)).error?.code).toBe(CLOSED)
+  })
+
+  test('a new payment cannot be dated in a closed week', async () => {
+    expect((await pay(a, unpaidBill, WEEK_1, 5000)).error?.code).toBe(CLOSED)
+  })
+
+  test('a paid bill cannot be added into a closed week', async () => {
+    const { error } = await a.client.from('bills').insert({
+      id: crypto.randomUUID(), account_id: accountId, name: 'Fictional bill', due_on: WEEK_1, cents: 100, paid_on: WEEK_1, paid_cents: 100,
+    })
+    expect(error?.code).toBe(CLOSED)
+  })
+
+  test('an unpaid bill can still change, and the closed week keeps its stored amounts', async () => {
+    const before = weekAccount((await load(a, WEEK_2)).ledger, 'USD').previousClosure
+    expect((await a.client.from('bills').update({ cents: 9000 }).eq('id', unpaidBill)).error).toBeNull()
+    const week = weekAccount((await load(a, WEEK_2)).ledger, 'USD')
+    expect(week.commitmentsCents).toBe(9000)
+    expect(week.previousClosure).toEqual(before)
+    expect((await a.client.from('bills').delete().eq('id', unpaidBill)).error).toBeNull()
+    expect(weekAccount((await load(a, WEEK_2)).ledger, 'USD').commitmentsCents).toBe(0)
+  })
+
+  test('a payment in the open week can be undone', async () => {
+    expect((await pay(a, unpaidBill, WEEK_2, 5000)).error).toBeNull()
+    expect((await a.client.from('bills').update({ paid_on: null, paid_cents: null }).eq('id', unpaidBill)).error).toBeNull()
+    expect(weekAccount((await load(a, WEEK_2)).ledger, 'USD').commitmentsCents).toBe(5000)
+  })
+
+  test('deleting the whole account still works, even with a payment in a closed week', async () => {
+    expect((await a.client.from('accounts').delete().eq('id', accountId)).error).toBeNull()
+    expect((await a.client.from('bills').select('id')).data).toEqual([])
+  })
+})
+
+describe('what a bill row can hold', () => {
+  let accountId: string
+  let bill: string
+
+  beforeEach(async () => {
+    accountId = await start(a)
+    bill = await addBill(a, accountId, 5000)
+  })
+
+  test('a payment date still to come is refused', async () => {
+    const future = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10)
+    expect((await pay(a, bill, future, 5000)).error?.code).toBe('SS005')
+  })
+
+  test('a payment before the account opened is refused', async () => {
+    expect((await pay(a, bill, '2026-10-18', 5000)).error?.code).toBe(CLOSED)
+  })
+
+  test('a paid date without an amount, or an amount without a date, is refused', async () => {
+    expect((await a.client.from('bills').update({ paid_on: WEEK_1 }).eq('id', bill)).error?.code).toBe(CHECK)
+    expect((await a.client.from('bills').update({ paid_cents: 5000 }).eq('id', bill)).error?.code).toBe(CHECK)
+  })
+
+  test('zero, negative and oversized amounts are refused', async () => {
+    for (const cents of [0, -100, 10000001]) {
+      expect((await a.client.from('bills').update({ cents }).eq('id', bill)).error?.code).toBe(CHECK)
+      expect((await pay(a, bill, WEEK_1, cents)).error?.code).toBe(CHECK)
+    }
+  })
+
+  test('an empty or overlong name is refused', async () => {
+    for (const name of ['', '   ', 'x'.repeat(61)]) {
+      expect((await a.client.from('bills').update({ name }).eq('id', bill)).error?.code).toBe(CHECK)
+    }
+  })
+
+  test('USD bills leave a BSD account alone', async () => {
+    expect((await createAccount(a.client, { ...usd, currency: 'BSD', commitmentsCents: 3000, recommendedCents: 0, allowanceCents: 0 })).ok).toBe(true)
+    const { ledger } = await load(a)
+    expect(weekAccount(ledger, 'USD').commitmentsCents).toBe(5000)
+    expect(weekAccount(ledger, 'BSD').commitmentsCents).toBe(3000)
+  })
+
+  test('appears in the export, without the owner id', async () => {
+    const result = await exportOwnData(a.client, '2026-11-04T12:00:00.000Z')
+    if (!result.ok) throw new Error(result.message)
+    expect(result.file.bills).toHaveLength(1)
+    expect(result.file.bills[0]).toMatchObject({ id: bill, due_on: '2026-11-01', cents: 5000, paid_on: null, paid_cents: null })
+    expect(JSON.stringify(result.file.bills)).not.toContain('user_id')
+  })
+})
+
+describe('user B and signed-out visitors', () => {
+  let accountId: string
+  let bAccountId: string
+  let bill: string
+
+  beforeEach(async () => {
+    accountId = await start(a)
+    bAccountId = await start(b)
+    bill = await addBill(a, accountId, 5000)
+  })
+
+  test("B sees none of A's bills", async () => {
+    const asB = await b.client.from('bills').select('id')
+    expect(asB.error).toBeNull()
+    expect(asB.data).toEqual([])
+  })
+
+  test("B cannot change, pay or delete A's bill", async () => {
+    expect((await b.client.from('bills').update({ cents: 1 }).eq('id', bill).select('id')).data).toEqual([])
+    expect((await pay(b, bill, WEEK_1, 5000).select('id')).data).toEqual([])
+    await b.client.from('bills').delete().eq('id', bill)
+    expect(weekAccount((await load(a)).ledger, 'USD').bills).toEqual([
+      { id: bill, name: 'Fictional bill', dueOn: '2026-11-01', cents: 5000 },
+    ])
+  })
+
+  test("B cannot add a bill to A's account, by link or by claiming to be A", async () => {
+    const row = { name: 'Forged', due_on: WEEK_1, cents: 100, account_id: accountId }
+    expect((await b.client.from('bills').insert({ id: crypto.randomUUID(), ...row })).error).not.toBeNull()
+    const claimed = await b.client.from('bills').insert({ id: crypto.randomUUID(), user_id: a.userId, ...row })
+    expect(claimed.error?.code).toBe('42501')
+    expect(weekAccount((await load(a)).ledger, 'USD').bills).toHaveLength(1)
+  })
+
+  test("B cannot move their own bill into A's account", async () => {
+    const own = await addBill(b, bAccountId, 100)
+    const { error } = await b.client.from('bills').update({ account_id: accountId }).eq('id', own)
+    expect(error?.code).toBe('23503')
+  })
+
+  test('a signed-out visitor is refused', async () => {
+    const anon = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_PUBLISHABLE_KEY!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+    const { error } = await anon.from('bills').select('id')
+    expect(error?.code).toBe('42501')
+  })
+})

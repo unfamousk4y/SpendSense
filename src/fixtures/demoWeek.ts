@@ -1,6 +1,7 @@
 // FICTIONAL DEMO DATA for the representative screen. Not saved anywhere and not
 // a real person's spending. Replace with persisted data once authentication and
 // ownership checks exist.
+import type { Bill } from '../domain/bills';
 import type { IsoDate } from '../domain/dates';
 import type { Currency } from '../domain/money';
 import type { AccountLedger, Ledger } from '../domain/ledger';
@@ -15,8 +16,8 @@ export type DemoAccount = {
   weekStartCashCents: number;
   /** P: protected savings allocation (part of C). */
   protectedCents: number;
-  /** B: unpaid commitments due by the plan end date (part of C). */
-  commitmentsCents: number;
+  /** B is the unpaid ones due by the plan end date (part of C). */
+  bills: Bill[];
   planEndDate: IsoDate;
   /** Snapshot taken at the start of the week. */
   recommendedAllowanceCents: number;
@@ -34,7 +35,10 @@ export const demoAccounts: Record<Currency, DemoAccount> = {
     currency: 'USD',
     weekStartCashCents: 100000,
     protectedCents: 20000,
-    commitmentsCents: 20000,
+    bills: [
+      { id: 'usd-bill-1', name: 'Rent share', dueOn: '2026-11-20', cents: 15000 },
+      { id: 'usd-bill-2', name: 'Phone plan', dueOn: '2026-11-25', cents: 5000 },
+    ],
     planEndDate: '2026-11-29',
     recommendedAllowanceCents: 15000,
     chosenAllowanceCents: 15000,
@@ -58,7 +62,7 @@ export const demoAccounts: Record<Currency, DemoAccount> = {
     currency: 'BSD',
     weekStartCashCents: 34550,
     protectedCents: 5000,
-    commitmentsCents: 12000,
+    bills: [{ id: 'bsd-bill-1', name: 'Lab fee', dueOn: '2026-11-18', cents: 12000 }],
     planEndDate: '2026-11-29',
     recommendedAllowanceCents: 4387,
     chosenAllowanceCents: 4500,
@@ -87,7 +91,7 @@ function toLedgerAccount(account: DemoAccount): AccountLedger {
     openingDate: DEMO_WEEK_START,
     openingCashCents: account.weekStartCashCents,
     openingProtectedCents: account.protectedCents,
-    commitmentsCents: account.commitmentsCents,
+    bills: account.bills,
     planEndDate: account.planEndDate,
     weeks: [
       {

@@ -7,6 +7,7 @@
 // hold a student's spending. Raw database messages are not shown to students.
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import type { AllowanceChange } from '../domain/allowanceChange';
+import type { Bill } from '../domain/bills';
 import type { CategoryId, NeedOrWant } from '../domain/categories';
 import type { WeekClosure } from '../domain/closure';
 import type { IsoDate } from '../domain/dates';
@@ -64,6 +65,8 @@ function saveMessage(error: PostgrestError): string {
       return 'That does not fit inside your free cash now. Reload the page to see the latest.';
     case 'SS004':
       return 'Income can only be recorded once it has been received.';
+    case 'SS005':
+      return 'A payment can only be recorded once it has been made.';
     default:
       return SAVE_FAILED;
   }
@@ -111,16 +114,17 @@ export async function loadLedger(client: SupabaseClient, today: IsoDate): Promis
 
 async function readLedger(client: SupabaseClient, today: IsoDate): Promise<LoadResult> {
   // Row-level security limits every one of these to the signed-in student.
-  const [accounts, purchases, income, plans, changes, closures, releases] = await Promise.all([
+  const [accounts, purchases, income, bills, plans, changes, closures, releases] = await Promise.all([
     readAllRows(client, 'accounts'),
     readAllRows(client, 'purchases'),
     readAllRows(client, 'income_receipts'),
+    readAllRows(client, 'bills'),
     readAllRows(client, 'week_plans', 'week_start'),
     readAllRows(client, 'allowance_changes'),
     readAllRows(client, 'week_closures', 'week_start'),
     readAllRows(client, 'savings_releases'),
   ]);
-  if (!accounts || !purchases || !income || !plans || !changes || !closures || !releases) {
+  if (!accounts || !purchases || !income || !bills || !plans || !changes || !closures || !releases) {
     return { ok: false, message: LOAD_FAILED };
   }
 
@@ -136,6 +140,7 @@ async function readLedger(client: SupabaseClient, today: IsoDate): Promise<LoadR
     ledger.accounts[currency] = toAccount(row, {
       purchases: purchases.filter((p) => p.account_id === row.id).map(toPurchase),
       income: income.filter((receipt) => receipt.account_id === row.id).map(toIncome),
+      bills: bills.filter((bill) => bill.account_id === row.id).map(toBill),
       weeks: plans.filter((plan) => plan.account_id === row.id).map((plan) => toWeekPlan(plan, changes)),
       closures: closures.filter((c) => c.account_id === row.id).map((c) => toClosure(c, currency)),
       releases: releases.filter((r) => r.account_id === row.id).map(toRelease),
@@ -147,7 +152,7 @@ async function readLedger(client: SupabaseClient, today: IsoDate): Promise<LoadR
 // The most rows the hosted database returns for one request by default.
 const ROWS_PER_REQUEST = 1000;
 
-const EXPORT_TABLES = ['accounts', 'purchases', 'income_receipts', 'week_plans', 'allowance_changes', 'week_closures', 'savings_releases'] as const;
+const EXPORT_TABLES = ['accounts', 'purchases', 'income_receipts', 'bills', 'week_plans', 'allowance_changes', 'week_closures', 'savings_releases'] as const;
 
 export type OwnDataExport = {
   format: 'spendsense-export';
@@ -166,8 +171,8 @@ export type ExportResult = { ok: true; file: OwnDataExport } | { ok: false; mess
  */
 export async function exportOwnData(client: SupabaseClient, exportedAt: string, pageSize = ROWS_PER_REQUEST): Promise<ExportResult> {
   const tables = await Promise.all(EXPORT_TABLES.map((table) => readAllRows(client, table, 'created_at', pageSize)));
-  const [accounts, purchases, income_receipts, week_plans, allowance_changes, week_closures, savings_releases] = tables;
-  if (!accounts || !purchases || !income_receipts || !week_plans || !allowance_changes || !week_closures || !savings_releases) {
+  const [accounts, purchases, income_receipts, bills, week_plans, allowance_changes, week_closures, savings_releases] = tables;
+  if (!accounts || !purchases || !income_receipts || !bills || !week_plans || !allowance_changes || !week_closures || !savings_releases) {
     return { ok: false, message: 'Could not download your data. Check your connection and try again.' };
   }
   return {
@@ -180,6 +185,7 @@ export async function exportOwnData(client: SupabaseClient, exportedAt: string, 
       accounts,
       purchases,
       income_receipts,
+      bills,
       week_plans,
       allowance_changes,
       week_closures,
@@ -337,13 +343,12 @@ function purchaseColumns(purchase: Purchase) {
 // Rows arrive untyped until generated database types are worth adding. These
 // functions are the one place that knows the column names.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function toAccount(row: any, parts: Pick<AccountLedger, 'purchases' | 'income' | 'weeks' | 'closures' | 'releases'>): AccountLedger {
+function toAccount(row: any, parts: Pick<AccountLedger, 'purchases' | 'income' | 'bills' | 'weeks' | 'closures' | 'releases'>): AccountLedger {
   return {
     currency: row.currency,
     openingDate: row.opening_date,
     openingCashCents: row.opening_cash_cents,
     openingProtectedCents: row.opening_protected_cents,
-    commitmentsCents: row.commitments_cents,
     planEndDate: row.plan_end_date,
     ...parts,
   };
@@ -367,6 +372,16 @@ function toIncome(row: any): IncomeReceipt {
     date: row.received_on,
     cents: row.cents,
     ...(row.source !== null && { source: row.source as string }),
+  };
+}
+
+function toBill(row: any): Bill {
+  return {
+    id: row.id,
+    name: row.name,
+    dueOn: row.due_on,
+    cents: row.cents,
+    ...(row.paid_on !== null && { paidOn: row.paid_on as IsoDate, paidCents: row.paid_cents as number }),
   };
 }
 
