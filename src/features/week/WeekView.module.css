@@ -279,6 +279,36 @@
   color: var(--ink-muted);
 }
 
+/* A due date such as "Nov 20" is wider than a weekday. */
+.billRow {
+  grid-template-columns: 3.25rem 1fr auto auto;
+}
+
+.overdue {
+  display: block;
+  color: var(--red);
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.billPrompt {
+  margin: 0 0 12px;
+  padding-left: 10px;
+  border-left: 3px solid var(--accent);
+  font-size: 0.875rem;
+}
+
+.billTotal {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 0;
+  padding: 10px 4px 0;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
 .summary {
   display: flex;
   align-items: center;

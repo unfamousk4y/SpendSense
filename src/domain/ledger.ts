@@ -10,7 +10,7 @@
 // Current cash and protected savings are worked out from them when needed.
 import { freeCashCents, suggestAllowance } from './allowance';
 import { currentAllowanceCents, recordAllowanceChange, type AllowanceChange } from './allowanceChange';
-import { billPaymentsCents, unpaidBillsCents, type Bill } from './bills';
+import { addBillOnce, billPaymentsCents, removeBill, unpaidBillsCents, updateBill, type Bill } from './bills';
 import { closeWeek, type WeekClosure } from './closure';
 import { addDays, mondayOf, planDays, type IsoDate } from './dates';
 import { addIncomeOnce, removeIncome, sumIncome, updateIncome, type IncomeReceipt } from './income';
@@ -67,6 +67,9 @@ export type LedgerAction =
   | { type: 'addIncome'; currency: Currency; income: IncomeReceipt }
   | { type: 'updateIncome'; currency: Currency; income: IncomeReceipt }
   | { type: 'deleteIncome'; currency: Currency; id: string }
+  | { type: 'addBill'; currency: Currency; bill: Bill }
+  | { type: 'updateBill'; currency: Currency; bill: Bill }
+  | { type: 'deleteBill'; currency: Currency; id: string }
   | { type: 'changeAllowance'; currency: Currency; change: AllowanceChange }
   | { type: 'releaseSavings'; currency: Currency; release: SavingsRelease }
   | { type: 'nextDay' };
@@ -157,6 +160,32 @@ export function ledgerReducer(state: Ledger, action: LedgerAction): Ledger {
       return changeAccount(state, action.currency, (account) => ({
         ...account,
         income: removeIncome(account.income, action.id),
+      }));
+    }
+
+    case 'addBill':
+      return changeAccount(state, action.currency, (account) => ({
+        ...account,
+        bills: addBillOnce(account.bills, action.bill),
+      }));
+
+    case 'updateBill': {
+      const existing = state.accounts[action.currency];
+      const original = existing?.bills.find((bill) => bill.id === action.bill.id);
+      if (!existing || !original || !billCanChange(state, existing, original)) return state;
+      return changeAccount(state, action.currency, (account) => ({
+        ...account,
+        bills: updateBill(account.bills, action.bill),
+      }));
+    }
+
+    case 'deleteBill': {
+      const existing = state.accounts[action.currency];
+      const original = existing?.bills.find((bill) => bill.id === action.id);
+      if (!existing || !original || !billCanChange(state, existing, original)) return state;
+      return changeAccount(state, action.currency, (account) => ({
+        ...account,
+        bills: removeBill(account.bills, action.id),
       }));
     }
 
@@ -328,6 +357,11 @@ function presentAccounts(state: Ledger): AccountLedger[] {
 
 function isOpenDate(state: Ledger, account: AccountLedger, date: IsoDate): boolean {
   return mondayOf(date) === mondayOf(state.today) && date <= state.today && date >= account.openingDate;
+}
+
+/** An unpaid bill moved no cash, so it can always change. A payment locks once its week closes. */
+function billCanChange(state: Ledger, account: AccountLedger, bill: Bill): boolean {
+  return bill.paidOn === undefined || isOpenDate(state, account, bill.paidOn);
 }
 
 function changeAccount(state: Ledger, currency: Currency, change: (account: AccountLedger) => AccountLedger): Ledger {

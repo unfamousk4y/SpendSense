@@ -152,7 +152,7 @@ export function SetupScreen({ currency, today, onCurrencyChange, onCreate, accou
           optional: true,
           invalid: showProblems && commitmentsCents === null,
           message: AMOUNT_HELP,
-          hint: 'The total of bills due before your plan ends.',
+          hint: 'The total of bills due before your plan ends. You can split it into separate bills afterwards.',
         })}
 
         <label className={formStyles.field}>

@@ -4,6 +4,7 @@ import { allocateCash } from '../../domain/allocation';
 import { freeCashCents } from '../../domain/allowance';
 import { midweekSuggestion, type AllowanceChange } from '../../domain/allowanceChange';
 import { categoryLabel, purchaseTitle } from '../../domain/categories';
+import { SETUP_BILL_NAME, type Bill } from '../../domain/bills';
 import { sumIncome, type IncomeReceipt } from '../../domain/income';
 import { addDays, daysBetween, planDays, type IsoDate } from '../../domain/dates';
 import type { Currency } from '../../domain/money';
@@ -14,6 +15,7 @@ import { Money } from '../../ui/Money';
 import { ThemeSwitch } from '../../ui/ThemeSwitch';
 import { AdjustAllowanceDialog } from './AdjustAllowanceDialog';
 import type { SavingsRelease } from '../../domain/release';
+import { BillDialog } from './BillDialog';
 import { CalculationBreakdown } from './CalculationBreakdown';
 import { IncomeDialog } from './IncomeDialog';
 import { ClosureSummary } from './ClosureSummary';
@@ -37,6 +39,9 @@ type WeekViewProps = {
   onAddIncome: (income: IncomeReceipt) => Promise<SaveResult>;
   onUpdateIncome: (income: IncomeReceipt) => Promise<SaveResult>;
   onDeleteIncome: (id: string) => Promise<SaveResult>;
+  onAddBill: (bill: Bill) => Promise<SaveResult>;
+  onUpdateBill: (bill: Bill) => Promise<SaveResult>;
+  onDeleteBill: (id: string) => Promise<SaveResult>;
   onChangeAllowance: (change: AllowanceChange) => Promise<SaveResult>;
   onReleaseSavings: (release: SavingsRelease) => Promise<SaveResult>;
   /** Present only on the fictional demo: move the date forward one day. */
@@ -51,6 +56,8 @@ type DialogState =
   | { mode: 'edit'; purchase: Purchase }
   | { mode: 'addIncome' }
   | { mode: 'editIncome'; income: IncomeReceipt }
+  | { mode: 'addBill' }
+  | { mode: 'editBill'; bill: Bill }
   | { mode: 'allowance' }
   | { mode: 'release' }
   | null;
@@ -66,6 +73,7 @@ type CashPanelId = 'cash-phone' | 'cash-desktop';
 type LastAction =
   | { kind: 'purchase'; verb: 'Saved' | 'Updated' | 'Deleted'; purchase: Purchase }
   | { kind: 'income'; verb: 'Recorded' | 'Updated' | 'Deleted'; income: IncomeReceipt }
+  | { kind: 'bill'; verb: 'Added' | 'Updated' | 'Deleted'; bill: Bill }
   | { kind: 'allowance'; change: AllowanceChange }
   | { kind: 'release'; release: SavingsRelease }
   | null;
@@ -87,6 +95,9 @@ export function WeekView({
   onAddIncome,
   onUpdateIncome,
   onDeleteIncome,
+  onAddBill,
+  onUpdateBill,
+  onDeleteBill,
   onChangeAllowance,
   onReleaseSavings,
   onNextDay,
@@ -129,6 +140,11 @@ export function WeekView({
   // (sort keeps the existing order of equal dates).
   const newestFirst = [...account.purchases].reverse().sort((a, b) => b.date.localeCompare(a.date));
   const incomeNewestFirst = [...account.income].reverse().sort((a, b) => b.date.localeCompare(a.date));
+
+  // Soonest first; bills due on one day stay in the order they were added.
+  const unpaidBills = account.bills.filter((bill) => bill.paidOn === undefined).sort((a, b) => a.dueOn.localeCompare(b.dueOn));
+  const hasSetupBill = unpaidBills.some((bill) => bill.name === SETUP_BILL_NAME);
+  const planEndLabel = label(account.planEndDate, { month: 'short', day: 'numeric' });
 
   const freeCents = freeCashCents(cashParts);
   // A fresh suggestion for the days left this week, as a total for the week.
@@ -173,6 +189,25 @@ export function WeekView({
     const result = await onDeleteIncome(income.id);
     if (result.ok) {
       setLastAction({ kind: 'income', verb: 'Deleted', income });
+      setDialog(null);
+    }
+    return result;
+  }
+
+  async function handleBillSave(bill: Bill): Promise<SaveResult> {
+    const isEdit = dialog?.mode === 'editBill';
+    const result = await (isEdit ? onUpdateBill(bill) : onAddBill(bill));
+    if (result.ok) {
+      setLastAction({ kind: 'bill', verb: isEdit ? 'Updated' : 'Added', bill });
+      setDialog(null);
+    }
+    return result;
+  }
+
+  async function handleBillDelete(bill: Bill): Promise<SaveResult> {
+    const result = await onDeleteBill(bill.id);
+    if (result.ok) {
+      setLastAction({ kind: 'bill', verb: 'Deleted', bill });
       setDialog(null);
     }
     return result;
@@ -225,7 +260,7 @@ export function WeekView({
       currency={currency}
       {...cashParts}
       freeCashCents={freeCents}
-      planEndLabel={label(account.planEndDate, { month: 'short', day: 'numeric' })}
+      planEndLabel={planEndLabel}
       recommendedAllowanceCents={account.recommendedAllowanceCents}
       chosenAllowanceCents={account.chosenAllowanceCents}
       spentCents={summary.spentCents}
@@ -326,6 +361,12 @@ export function WeekView({
                 <>
                   {lastAction.verb} <Money cents={lastAction.income.cents} currency={currency} /> of income. Your
                   allowance has not changed; adjust it if you want to.
+                </>
+              )}
+              {lastAction?.kind === 'bill' && (
+                <>
+                  {lastAction.verb} bill: {lastAction.bill.name}, <Money cents={lastAction.bill.cents} currency={currency} />.
+                  Your allowance has not changed; adjust it if you want to.
                 </>
               )}
               {lastAction?.kind === 'allowance' && (
@@ -464,6 +505,61 @@ export function WeekView({
             </button>
           </section>
 
+          <section className={styles.section} aria-labelledby="bills-heading">
+            <h2 id="bills-heading" className={styles.sectionTitle}>
+              Bills
+            </h2>
+            {hasSetupBill && (
+              <p className={styles.billPrompt}>
+                “{SETUP_BILL_NAME}” is the total you entered at setup, with your plan’s end as a placeholder date. Split
+                it into your real bills: lower it, or delete it, and add each one with its own due date.
+              </p>
+            )}
+            {unpaidBills.length === 0 ? (
+              <p className={styles.empty}>No unpaid bills.</p>
+            ) : (
+              <>
+                <ul className={styles.activity}>
+                  {unpaidBills.map((bill) => (
+                    <li key={bill.id}>
+                      <button
+                        type="button"
+                        className={`${styles.activityRow} ${styles.billRow}`}
+                        onClick={() => setDialog({ mode: 'editBill', bill })}
+                      >
+                        <time className={styles.activityDay} dateTime={bill.dueOn}>
+                          {label(bill.dueOn, { month: 'short', day: 'numeric' })}
+                        </time>
+                        <span className={styles.merchant}>
+                          {bill.name}
+                          {bill.dueOn < today && <span className={styles.overdue}>Overdue</span>}
+                          {bill.dueOn > account.planEndDate && (
+                            <span className={styles.purchaseTags}>Due after your plan ends, so not counted yet</span>
+                          )}
+                        </span>
+                        <span className={styles.amount}>
+                          <Money cents={bill.cents} currency={currency} />
+                        </span>
+                        <span className={styles.editHint} aria-hidden="true">
+                          Edit
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <p className={styles.billTotal}>
+                  <span>Unpaid bills due by {planEndLabel}</span>
+                  <span className={styles.amount}>
+                    <Money cents={account.commitmentsCents} currency={currency} />
+                  </span>
+                </p>
+              </>
+            )}
+            <button type="button" className={styles.addIncome} onClick={() => setDialog({ mode: 'addBill' })}>
+              + Add bill
+            </button>
+          </section>
+
           <details className={`${styles.section} ${styles.phoneOnly}`}>
             <summary className={styles.summary}>How this is calculated</summary>
             {breakdown}
@@ -542,6 +638,24 @@ export function WeekView({
           daysLeft={daysLeft}
           onSave={handleIncomeSave}
           onDelete={handleIncomeDelete}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {(dialog?.mode === 'addBill' || dialog?.mode === 'editBill') && (
+        <BillDialog
+          key={dialog.mode === 'editBill' ? dialog.bill.id : 'add'}
+          currency={currency}
+          existing={dialog.mode === 'editBill' ? dialog.bill : undefined}
+          planEndDate={account.planEndDate}
+          planEndLabel={planEndLabel}
+          commitmentsCents={account.commitmentsCents}
+          freeCents={freeCents}
+          spentCents={summary.spentCents}
+          allowanceCents={account.chosenAllowanceCents}
+          daysThisWeek={daysThisWeek}
+          daysLeft={daysLeft}
+          onSave={handleBillSave}
+          onDelete={handleBillDelete}
           onClose={() => setDialog(null)}
         />
       )}

@@ -71,6 +71,9 @@ function DemoWeek() {
         onAddIncome={(income) => applied({ type: 'addIncome', currency, income })}
         onUpdateIncome={(income) => applied({ type: 'updateIncome', currency, income })}
         onDeleteIncome={(id) => applied({ type: 'deleteIncome', currency, id })}
+        onAddBill={(bill) => applied({ type: 'addBill', currency, bill })}
+        onUpdateBill={(bill) => applied({ type: 'updateBill', currency, bill })}
+        onDeleteBill={(id) => applied({ type: 'deleteBill', currency, id })}
         onChangeAllowance={(change) => applied({ type: 'changeAllowance', currency, change })}
         onReleaseSavings={(release) => applied({ type: 'releaseSavings', currency, release })}
         onNextDay={() => dispatch({ type: 'nextDay' })}

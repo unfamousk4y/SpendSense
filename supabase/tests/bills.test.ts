@@ -2,7 +2,8 @@
 // publishable key only. Fictional data only.
 import { createClient } from '@supabase/supabase-js'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
-import { createAccount, exportOwnData, loadLedger, saveAllowanceChange, type NewAccount } from '../../src/data/ledgerStore'
+import { createAccount, deleteBillRow, exportOwnData, insertBill, loadLedger, saveAllowanceChange, updateBillRow, type NewAccount } from '../../src/data/ledgerStore'
+import type { Bill } from '../../src/domain/bills'
 import { weekAccount } from '../../src/domain/ledger'
 import { signIn, type TestUser } from './clients.ts'
 
@@ -330,5 +331,55 @@ describe('user B and signed-out visitors', () => {
     })
     const { error } = await anon.from('bills').select('id')
     expect(error?.code).toBe('42501')
+  })
+})
+
+describe('saving bills through the data layer', () => {
+  let accountId: string
+  const newBill = (overrides: Partial<Bill> = {}): Bill => ({ id: crypto.randomUUID(), name: 'Fictional rent', dueOn: '2026-11-01', cents: 15000, ...overrides })
+  const bills = async (user: TestUser) => weekAccount((await load(user)).ledger, 'USD').bills
+
+  beforeEach(async () => {
+    accountId = await start(a)
+    await start(b)
+  })
+
+  test('comes back with every field', async () => {
+    const bill = newBill()
+    expect(await insertBill(a.client, accountId, bill)).toEqual({ ok: true })
+    expect(await bills(a)).toEqual([bill])
+  })
+
+  test('a retry after a lost reply saves it once and reports success', async () => {
+    const bill = newBill()
+    await insertBill(a.client, accountId, bill)
+    expect(await insertBill(a.client, accountId, bill)).toEqual({ ok: true })
+    expect(await bills(a)).toEqual([bill])
+  })
+
+  test('an edit changes the row, and a second delete still succeeds', async () => {
+    const bill = newBill()
+    await insertBill(a.client, accountId, bill)
+    const edited = { ...bill, name: 'Fictional fee', dueOn: '2026-11-02', cents: 100 }
+    expect(await updateBillRow(a.client, edited)).toEqual({ ok: true })
+    expect(await bills(a)).toEqual([edited])
+    expect(await deleteBillRow(a.client, bill.id)).toEqual({ ok: true })
+    expect(await deleteBillRow(a.client, bill.id)).toEqual({ ok: true })
+    expect(await bills(a)).toEqual([])
+  })
+
+  test('editing a bill that is gone says so', async () => {
+    expect(await updateBillRow(a.client, newBill())).toEqual({ ok: false, message: 'That bill no longer exists. Reload the page to see the latest.' })
+  })
+
+  test("B's edit of A's bill fails, and reusing A's id is a failure, not a false success", async () => {
+    const bill = newBill()
+    await insertBill(a.client, accountId, bill)
+    const bAccountId = (await load(b)).accountIds.USD!
+    expect((await updateBillRow(b.client, { ...bill, cents: 1 })).ok).toBe(false)
+    expect((await insertBill(b.client, bAccountId, bill)).ok).toBe(false)
+    await deleteBillRow(b.client, bill.id)
+    expect(await bills(a)).toEqual([bill])
+    expect(await bills(b)).toEqual([])
   })
 })

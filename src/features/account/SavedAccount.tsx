@@ -2,19 +2,23 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { useEffect, useReducer, useState, type ReactNode } from 'react';
 import {
   createAccount,
+  deleteBillRow,
   deleteIncomeRow,
   deletePurchaseRow,
+  insertBill,
   insertIncome,
   insertPurchase,
   loadLedger,
   saveAllowanceChange,
   saveRelease,
+  updateBillRow,
   updateIncomeRow,
   updatePurchaseRow,
   type LoadedLedger,
   type SaveResult,
 } from '../../data/ledgerStore';
 import type { AllowanceChange } from '../../domain/allowanceChange';
+import type { Bill } from '../../domain/bills';
 import { localDateIn, mondayOf, type IsoDate } from '../../domain/dates';
 import { hasPlanThisWeek, ledgerReducer, weekAccount, type LedgerAction } from '../../domain/ledger';
 import type { IncomeReceipt } from '../../domain/income';
@@ -175,6 +179,9 @@ function SavedWeek({ client, loaded, today, currency, onCurrencyChange, onAccoun
           saveThenApply(updateIncomeRow(client, income), { type: 'updateIncome', currency, income })
         }
         onDeleteIncome={(id: string) => saveThenApply(deleteIncomeRow(client, id), { type: 'deleteIncome', currency, id })}
+        onAddBill={(bill: Bill) => saveThenApply(insertBill(client, accountId, bill), { type: 'addBill', currency, bill })}
+        onUpdateBill={(bill: Bill) => saveThenApply(updateBillRow(client, bill), { type: 'updateBill', currency, bill })}
+        onDeleteBill={(id: string) => saveThenApply(deleteBillRow(client, id), { type: 'deleteBill', currency, id })}
         onChangeAllowance={(change: AllowanceChange) =>
           saveThenApply(saveAllowanceChange(client, weekPlanId, change), { type: 'changeAllowance', currency, change })
         }

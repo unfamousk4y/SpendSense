@@ -5,7 +5,11 @@
 // Payment details live on the bill itself, and both C and B are worked out from
 // them, so one saved row changes both together. A payment is not spending: it
 // never counts against the weekly allowance.
+import { midweekSuggestion, type MidweekSuggestion } from './allowanceChange';
 import type { IsoDate } from './dates';
+
+/** The name the database gives the one bill it makes from the setup total. */
+export const SETUP_BILL_NAME = 'Bills from setup';
 
 export type Bill = {
   /** One per opening of the form, so a repeated save is the same bill. */
@@ -32,4 +36,64 @@ export function billPaymentsCents(bills: Bill[], before?: IsoDate): number {
   return bills
     .filter((bill) => bill.paidOn !== undefined && (before === undefined || bill.paidOn < before))
     .reduce((total, bill) => total + (bill.paidCents ?? 0), 0);
+}
+
+export type BillSide = { commitmentsCents: number; freeCents: number };
+
+export type BillPreview = {
+  before: BillSide;
+  after: BillSide;
+  /** Whether the bill as typed counts towards B. Due after the plan end, it does not. */
+  counted: boolean;
+  /** A fresh suggestion for this week if the change is saved. Only ever offered. */
+  suggestion: MidweekSuggestion;
+};
+
+/**
+ * What adding or editing an unpaid bill does. Only B and F move: cash does not
+ * change until a bill is paid, and the allowance never changes by itself.
+ */
+export function previewBillChange({
+  before,
+  after,
+  planEndDate,
+  commitmentsCents,
+  freeCents,
+  spentCents,
+  daysThisWeek,
+  daysLeft,
+}: {
+  /** The bill as saved now, when editing. */
+  before?: Bill;
+  after: Bill;
+  planEndDate: IsoDate;
+  commitmentsCents: number;
+  freeCents: number;
+  spentCents: number;
+  daysThisWeek: number;
+  daysLeft: number;
+}): BillPreview {
+  const countedAfter = unpaidBillsCents([after], planEndDate);
+  const changeCents = countedAfter - unpaidBillsCents(before ? [before] : [], planEndDate);
+  const afterFreeCents = freeCents - changeCents;
+  return {
+    before: { commitmentsCents, freeCents },
+    after: { commitmentsCents: commitmentsCents + changeCents, freeCents: afterFreeCents },
+    counted: countedAfter > 0,
+    suggestion: midweekSuggestion({ spentCents, freeCents: afterFreeCents, daysThisWeek, daysLeft }),
+  };
+}
+
+/** Appends a bill unless one with the same id is already recorded. */
+export function addBillOnce(bills: Bill[], bill: Bill): Bill[] {
+  if (bills.some((existing) => existing.id === bill.id)) return bills;
+  return [...bills, bill];
+}
+
+export function updateBill(bills: Bill[], bill: Bill): Bill[] {
+  return bills.map((existing) => (existing.id === bill.id ? bill : existing));
+}
+
+export function removeBill(bills: Bill[], id: string): Bill[] {
+  return bills.filter((existing) => existing.id !== id);
 }

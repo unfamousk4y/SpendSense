@@ -260,6 +260,11 @@ export async function insertIncome(client: SupabaseClient, accountId: string, in
   return insertOnce(client, 'income_receipts', { id: income.id, account_id: accountId, ...incomeColumns(income) });
 }
 
+/** Saves a new unpaid bill, with the same retry safety as a new purchase. */
+export async function insertBill(client: SupabaseClient, accountId: string, bill: Bill): Promise<SaveResult> {
+  return insertOnce(client, 'bills', { id: bill.id, account_id: accountId, ...billColumns(bill) });
+}
+
 async function insertOnce(client: SupabaseClient, table: string, row: { id: string } & Row): Promise<SaveResult> {
   const { error } = await client.from(table).insert(row);
   if (!error) return { ok: true };
@@ -317,6 +322,23 @@ export async function updateIncomeRow(client: SupabaseClient, income: IncomeRece
 export async function deleteIncomeRow(client: SupabaseClient, id: string): Promise<SaveResult> {
   const { error } = await client.from('income_receipts').delete().eq('id', id);
   return error ? { ok: false, message: saveMessage(error) } : { ok: true };
+}
+
+/** Changes what a bill is. Whether it has been paid is saved separately. */
+export async function updateBillRow(client: SupabaseClient, bill: Bill): Promise<SaveResult> {
+  const { data, error } = await client.from('bills').update(billColumns(bill)).eq('id', bill.id).select('id');
+  if (error) return { ok: false, message: saveMessage(error) };
+  return data.length === 1 ? { ok: true } : { ok: false, message: 'That bill no longer exists. Reload the page to see the latest.' };
+}
+
+/** Deleting something already gone is a success, as with purchases. */
+export async function deleteBillRow(client: SupabaseClient, id: string): Promise<SaveResult> {
+  const { error } = await client.from('bills').delete().eq('id', id);
+  return error ? { ok: false, message: saveMessage(error) } : { ok: true };
+}
+
+function billColumns(bill: Bill) {
+  return { name: bill.name, due_on: bill.dueOn, cents: bill.cents };
 }
 
 function incomeColumns(income: IncomeReceipt) {
