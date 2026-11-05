@@ -3,9 +3,11 @@ import { useEffect, useReducer, useState, type ReactNode } from 'react';
 import {
   createAccount,
   deleteBillRow,
+  deleteCorrectionRow,
   deleteIncomeRow,
   deletePurchaseRow,
   insertBill,
+  insertCorrection,
   insertIncome,
   insertPurchase,
   loadLedger,
@@ -23,6 +25,7 @@ import {
 } from '../../data/ledgerStore';
 import type { AllowanceChange } from '../../domain/allowanceChange';
 import type { Bill, BillPayment } from '../../domain/bills';
+import type { BalanceCorrection } from '../../domain/correction';
 import { localDateIn, mondayOf, type IsoDate } from '../../domain/dates';
 import { hasPlanThisWeek, ledgerReducer, weekAccount, type LedgerAction } from '../../domain/ledger';
 import type { IncomeReceipt } from '../../domain/income';
@@ -185,6 +188,10 @@ function SavedWeek({ client, loaded, today, currency, onCurrencyChange, onAccoun
           saveThenApply(updateIncomeRow(client, income), { type: 'updateIncome', currency, income })
         }
         onDeleteIncome={(id: string) => saveThenApply(deleteIncomeRow(client, id), { type: 'deleteIncome', currency, id })}
+        onAddCorrection={(correction: BalanceCorrection) =>
+          saveThenApply(insertCorrection(client, accountId, correction), { type: 'addCorrection', currency, correction })
+        }
+        onDeleteCorrection={(id: string) => saveThenApply(deleteCorrectionRow(client, id), { type: 'deleteCorrection', currency, id })}
         onAddBill={(bill: Bill) => saveThenApply(insertBill(client, accountId, bill), { type: 'addBill', currency, bill })}
         onUpdateBill={(bill: Bill) => saveThenApply(updateBillRow(client, bill), { type: 'updateBill', currency, bill })}
         onDeleteBill={(id: string) => saveThenApply(deleteBillRow(client, id), { type: 'deleteBill', currency, id })}

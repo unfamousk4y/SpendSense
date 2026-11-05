@@ -6,7 +6,7 @@
 // (closing a week AND starting the next) come back as one new state, so the
 // screen can never show half of them.
 //
-// Only facts are stored: opening balances, purchases, income, bills, week plans, closures.
+// Only facts are stored: opening balances, purchases, income, bills, corrections, week plans, closures.
 // Current cash and protected savings are worked out from them when needed.
 import { freeCashCents, suggestAllowance } from './allowance';
 import { currentAllowanceCents, recordAllowanceChange, type AllowanceChange } from './allowanceChange';
@@ -23,6 +23,7 @@ import {
   type BillPayment,
 } from './bills';
 import { closeWeek, type WeekClosure } from './closure';
+import { addCorrectionOnce, removeCorrection, sumCorrections, type BalanceCorrection } from './correction';
 import { addDays, mondayOf, planDays, type IsoDate } from './dates';
 import { addIncomeOnce, removeIncome, sumIncome, updateIncome, type IncomeReceipt } from './income';
 import type { Currency } from './money';
@@ -61,6 +62,8 @@ export type AccountLedger = {
   purchases: Purchase[];
   /** Every recorded receipt of money, all weeks. */
   income: IncomeReceipt[];
+  /** Every balance correction, all weeks. */
+  corrections: BalanceCorrection[];
   closures: WeekClosure[];
   /** Explicit releases of protected savings, oldest first. */
   releases: SavingsRelease[];
@@ -79,6 +82,8 @@ export type LedgerAction =
   | { type: 'addIncome'; currency: Currency; income: IncomeReceipt }
   | { type: 'updateIncome'; currency: Currency; income: IncomeReceipt }
   | { type: 'deleteIncome'; currency: Currency; id: string }
+  | { type: 'addCorrection'; currency: Currency; correction: BalanceCorrection }
+  | { type: 'deleteCorrection'; currency: Currency; id: string }
   | { type: 'addBill'; currency: Currency; bill: Bill }
   | { type: 'updateBill'; currency: Currency; bill: Bill }
   | { type: 'deleteBill'; currency: Currency; id: string }
@@ -112,6 +117,8 @@ export type WeekAccount = {
   purchases: Purchase[];
   /** This week's income only. */
   income: IncomeReceipt[];
+  /** This week's balance corrections only. */
+  corrections: BalanceCorrection[];
   /** The closure of the week just before this one, if it was closed. */
   previousClosure: WeekClosure | undefined;
 };
@@ -178,6 +185,26 @@ export function ledgerReducer(state: Ledger, action: LedgerAction): Ledger {
       return changeAccount(state, action.currency, (account) => ({
         ...account,
         income: removeIncome(account.income, action.id),
+      }));
+    }
+
+    case 'addCorrection': {
+      const existing = state.accounts[action.currency];
+      // Only in the open week. Closed weeks are never edited.
+      if (!existing || !isOpenDate(state, existing, action.correction.date)) return state;
+      return changeAccount(state, action.currency, (account) => ({
+        ...account,
+        corrections: addCorrectionOnce(account.corrections, action.correction),
+      }));
+    }
+
+    case 'deleteCorrection': {
+      const existing = state.accounts[action.currency];
+      const original = existing?.corrections.find((correction) => correction.id === action.id);
+      if (!existing || !original || !isOpenDate(state, existing, original.date)) return state;
+      return changeAccount(state, action.currency, (account) => ({
+        ...account,
+        corrections: removeCorrection(account.corrections, action.id),
       }));
     }
 
@@ -369,7 +396,8 @@ export function weekAccount(state: Ledger, currency: Currency): WeekAccount {
       account.openingCashCents +
       sumIncome(account.income.filter((receipt) => receipt.date < weekStart)) -
       sumCents(account.purchases.filter((p) => p.date < weekStart)) -
-      billPaymentsCents(account.bills, weekStart),
+      billPaymentsCents(account.bills, weekStart) +
+      sumCorrections(account.corrections.filter((correction) => correction.date < weekStart)),
     protectedCents: protectedCents(account, account.closures),
     commitmentsCents: unpaidBillsCents(account.bills, account.planEndDate),
     bills: account.bills,
@@ -381,6 +409,7 @@ export function weekAccount(state: Ledger, currency: Currency): WeekAccount {
     allowanceChanges: plan.changes,
     purchases: account.purchases.filter((p) => mondayOf(p.date) === weekStart),
     income: account.income.filter((receipt) => mondayOf(receipt.date) === weekStart),
+    corrections: account.corrections.filter((correction) => mondayOf(correction.date) === weekStart),
     previousClosure: account.closures.find((closure) => closure.weekStart === addDays(weekStart, -7)),
   };
 }
@@ -441,7 +470,11 @@ function cashParts(account: AccountLedger, closures: WeekClosure[]) {
   return {
     // Everything recorded is dated today or earlier, so this is current cash.
     currentCashCents:
-      account.openingCashCents + sumIncome(account.income) - sumCents(account.purchases) - billPaymentsCents(account.bills),
+      account.openingCashCents +
+      sumIncome(account.income) -
+      sumCents(account.purchases) -
+      billPaymentsCents(account.bills) +
+      sumCorrections(account.corrections),
     protectedCents: protectedCents(account, closures),
     commitmentsCents: unpaidBillsCents(account.bills, account.planEndDate),
   };

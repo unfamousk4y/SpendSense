@@ -2,9 +2,10 @@ import { AnimatePresence } from 'motion/react';
 import { useState, type ReactNode } from 'react';
 import { allocateCash } from '../../domain/allocation';
 import { freeCashCents } from '../../domain/allowance';
-import { midweekSuggestion, type AllowanceChange } from '../../domain/allowanceChange';
+import { midweekSuggestion, remainingOverFreeCash, type AllowanceChange } from '../../domain/allowanceChange';
 import { categoryLabel, purchaseTitle } from '../../domain/categories';
 import { SETUP_BILL_NAME, type Bill, type BillPayment } from '../../domain/bills';
+import { sumCorrections, type BalanceCorrection } from '../../domain/correction';
 import { sumIncome, type IncomeReceipt } from '../../domain/income';
 import { addDays, daysBetween, planDays, type IsoDate } from '../../domain/dates';
 import type { Currency } from '../../domain/money';
@@ -19,6 +20,8 @@ import { BillDialog } from './BillDialog';
 import { CalculationBreakdown } from './CalculationBreakdown';
 import { IncomeDialog } from './IncomeDialog';
 import { ClosureSummary } from './ClosureSummary';
+import { CorrectBalanceDialog } from './CorrectBalanceDialog';
+import { UndoCorrectionDialog } from './UndoCorrectionDialog';
 import { NewPlanDialog } from './NewPlanDialog';
 import { PayBillDialog } from './PayBillDialog';
 import { moneyFlow } from '../../domain/moneyFlow';
@@ -42,6 +45,8 @@ type WeekViewProps = {
   onAddIncome: (income: IncomeReceipt) => Promise<SaveResult>;
   onUpdateIncome: (income: IncomeReceipt) => Promise<SaveResult>;
   onDeleteIncome: (id: string) => Promise<SaveResult>;
+  onAddCorrection: (correction: BalanceCorrection) => Promise<SaveResult>;
+  onDeleteCorrection: (id: string) => Promise<SaveResult>;
   onAddBill: (bill: Bill) => Promise<SaveResult>;
   onUpdateBill: (bill: Bill) => Promise<SaveResult>;
   onDeleteBill: (id: string) => Promise<SaveResult>;
@@ -63,6 +68,8 @@ type DialogState =
   | { mode: 'edit'; purchase: Purchase }
   | { mode: 'addIncome' }
   | { mode: 'editIncome'; income: IncomeReceipt }
+  | { mode: 'correct' }
+  | { mode: 'undoCorrection'; correction: BalanceCorrection }
   | { mode: 'addBill' }
   | { mode: 'editBill'; bill: Bill }
   | { mode: 'payBill'; bill: Bill }
@@ -82,6 +89,7 @@ type CashPanelId = 'cash-phone' | 'cash-desktop';
 type LastAction =
   | { kind: 'purchase'; verb: 'Saved' | 'Updated' | 'Deleted'; purchase: Purchase }
   | { kind: 'income'; verb: 'Recorded' | 'Updated' | 'Deleted'; income: IncomeReceipt }
+  | { kind: 'correction'; verb: 'Saved' | 'Undid'; correction: BalanceCorrection; cashAfterCents: number }
   | { kind: 'bill'; verb: 'Added' | 'Updated' | 'Deleted'; bill: Bill }
   | { kind: 'billPaid'; verb: 'Paid' | 'Updated'; name: string; cents: number; restCents?: number }
   | { kind: 'billUnpaid'; name: string; cents: number }
@@ -107,6 +115,8 @@ export function WeekView({
   onAddIncome,
   onUpdateIncome,
   onDeleteIncome,
+  onAddCorrection,
+  onDeleteCorrection,
   onAddBill,
   onUpdateBill,
   onDeleteBill,
@@ -127,9 +137,13 @@ export function WeekView({
 
   const { currency, weekStart } = account;
   const summary = summarizeWeek(weekStart, account.chosenAllowanceCents, account.purchases);
-  // Derived, never stored: cash on Monday, plus income since, minus spending and bill payments since.
+  // Derived, never stored: cash on Monday, plus income and corrections since, minus spending and bill payments since.
   const currentCashCents =
-    account.weekStartCashCents + sumIncome(account.income) - summary.spentCents - account.billPaymentsThisWeekCents;
+    account.weekStartCashCents +
+    sumIncome(account.income) +
+    sumCorrections(account.corrections) -
+    summary.spentCents -
+    account.billPaymentsThisWeekCents;
   const cashParts = {
     currentCashCents,
     protectedCents: account.protectedCents,
@@ -172,6 +186,7 @@ export function WeekView({
   const { daysThisWeek, daysLeft } = planDays(today, account.planEndDate);
   const suggestion = midweekSuggestion({ spentCents: summary.spentCents, freeCents, daysThisWeek, daysLeft });
   const lastChange = account.allowanceChanges.at(-1);
+  const overFreeCash = remainingOverFreeCash({ remainingCents: summary.remainingCents, freeCents });
   const canStartPlan = canStartNewPlan(account.planEndDate, today);
 
   // The form closes and the confirmation shows only after a confirmed save. A
@@ -210,6 +225,24 @@ export function WeekView({
     const result = await onDeleteIncome(income.id);
     if (result.ok) {
       setLastAction({ kind: 'income', verb: 'Deleted', income });
+      setDialog(null);
+    }
+    return result;
+  }
+
+  async function handleCorrectionSave(correction: BalanceCorrection): Promise<SaveResult> {
+    const result = await onAddCorrection(correction);
+    if (result.ok) {
+      setLastAction({ kind: 'correction', verb: 'Saved', correction, cashAfterCents: currentCashCents + correction.differenceCents });
+      setDialog(null);
+    }
+    return result;
+  }
+
+  async function handleCorrectionUndo(correction: BalanceCorrection): Promise<SaveResult> {
+    const result = await onDeleteCorrection(correction.id);
+    if (result.ok) {
+      setLastAction({ kind: 'correction', verb: 'Undid', correction, cashAfterCents: currentCashCents - correction.differenceCents });
       setDialog(null);
     }
     return result;
@@ -327,6 +360,7 @@ export function WeekView({
       }
       onAdjust={() => setDialog({ mode: 'allowance' })}
       onRelease={() => setDialog({ mode: 'release' })}
+      onCorrect={() => setDialog({ mode: 'correct' })}
     />
   );
 
@@ -410,6 +444,25 @@ export function WeekView({
               of <Money cents={account.chosenAllowanceCents} currency={currency} /> allowance ·{' '}
               <Money cents={summary.spentCents} currency={currency} /> spent
             </p>
+            {/* Stays until it is no longer true, unlike the confirmation line below. */}
+            {overFreeCash && (
+              <div className={styles.overFreeCash} role="status">
+                <p className={styles.overFreeCashText}>
+                  {overFreeCash.availableCents > 0 ? (
+                    <>
+                      Only <Money cents={overFreeCash.availableCents} currency={currency} /> of this is available.
+                    </>
+                  ) : (
+                    'None of this is available.'
+                  )}{' '}
+                  Your weekly remaining is <Money cents={overFreeCash.overCents} currency={currency} /> more than your free
+                  cash.
+                </p>
+                <button type="button" className={styles.addIncome} onClick={() => setDialog({ mode: 'allowance' })}>
+                  Adjust allowance
+                </button>
+              </div>
+            )}
             {account.chosenAllowanceCents !== account.recommendedAllowanceCents && (
               <p className={styles.note}>
                 You chose <Money cents={account.chosenAllowanceCents} currency={currency} />; the
@@ -428,6 +481,13 @@ export function WeekView({
                 <>
                   {lastAction.verb} <Money cents={lastAction.income.cents} currency={currency} /> of income. Your
                   allowance has not changed; adjust it if you want to.
+                </>
+              )}
+              {lastAction?.kind === 'correction' && (
+                <>
+                  {lastAction.verb === 'Saved' ? 'Saved the balance correction' : 'Undid the balance correction'}. Cash is now{' '}
+                  <Money cents={lastAction.cashAfterCents} currency={currency} />. Your allowance has not changed; adjust it if you
+                  want to.
                 </>
               )}
               {lastAction?.kind === 'bill' && (
@@ -592,6 +652,39 @@ export function WeekView({
               + Add income
             </button>
           </section>
+
+          {account.corrections.length > 0 && (
+            <section className={styles.section} aria-labelledby="corrections-heading">
+              <h2 id="corrections-heading" className={styles.sectionTitle}>
+                Balance corrections this week
+              </h2>
+              <ul className={styles.activity}>
+                {account.corrections.map((correction) => (
+                  <li key={correction.id}>
+                    <button
+                      type="button"
+                      className={styles.activityRow}
+                      onClick={() => setDialog({ mode: 'undoCorrection', correction })}
+                    >
+                      <time className={styles.activityDay} dateTime={correction.date}>
+                        {label(correction.date, { weekday: 'short' })}
+                      </time>
+                      <span className={styles.merchant}>
+                        {correction.differenceCents < 0 ? 'Cash lowered' : 'Cash raised'}
+                        {correction.note && <span className={styles.purchaseNote}>{correction.note}</span>}
+                      </span>
+                      <span className={styles.amount}>
+                        <Money cents={Math.abs(correction.differenceCents)} currency={currency} />
+                      </span>
+                      <span className={styles.editHint} aria-hidden="true">
+                        Undo
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           <section className={styles.section} aria-labelledby="bills-heading">
             <h2 id="bills-heading" className={styles.sectionTitle}>
@@ -796,6 +889,32 @@ export function WeekView({
           remainingCents={summary.remainingCents}
           onPay={handleBillPay}
           onUndo={handleBillUndo}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.mode === 'correct' && (
+        <CorrectBalanceDialog
+          currency={currency}
+          today={today}
+          currentCashCents={currentCashCents}
+          freeCents={freeCents}
+          spentCents={summary.spentCents}
+          remainingCents={summary.remainingCents}
+          allowanceCents={account.chosenAllowanceCents}
+          daysThisWeek={daysThisWeek}
+          daysLeft={daysLeft}
+          onSave={handleCorrectionSave}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.mode === 'undoCorrection' && (
+        <UndoCorrectionDialog
+          key={dialog.correction.id}
+          currency={currency}
+          correction={dialog.correction}
+          dateLabel={label(dialog.correction.date, { weekday: 'short', month: 'short', day: 'numeric' })}
+          currentCashCents={currentCashCents}
+          onUndo={handleCorrectionUndo}
           onClose={() => setDialog(null)}
         />
       )}

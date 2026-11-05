@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import {
-  currentAllowanceCents,
+import { remainingOverFreeCash, currentAllowanceCents,
   midweekSuggestion,
   previewAllowanceChange,
   recordAllowanceChange,
@@ -155,5 +154,29 @@ describe('allowance change record', () => {
     expect(currentAllowanceCents(15000, [])).toBe(15000);
     const second = { ...change, id: 'change-2', fromCents: 18000, toCents: 12000 };
     expect(currentAllowanceCents(15000, [change, second])).toBe(12000);
+  });
+});
+
+describe('remainingOverFreeCash', () => {
+  test('500 remaining with 434 of free cash: 434 available, 66 over', () => {
+    expect(remainingOverFreeCash({ remainingCents: 50000, freeCents: 43400 })).toEqual({ availableCents: 43400, overCents: 6600 });
+  });
+
+  test('exactly covered, or more than covered, is no warning', () => {
+    expect(remainingOverFreeCash({ remainingCents: 43400, freeCents: 43400 })).toBeNull();
+    expect(remainingOverFreeCash({ remainingCents: 11000, freeCents: 56000 })).toBeNull();
+  });
+
+  test('one cent over is a warning', () => {
+    expect(remainingOverFreeCash({ remainingCents: 43401, freeCents: 43400 })).toEqual({ availableCents: 43400, overCents: 1 });
+  });
+
+  test('negative free cash means none is available, and the shortfall is not added on', () => {
+    expect(remainingOverFreeCash({ remainingCents: 11000, freeCents: -5000 })).toEqual({ availableCents: 0, overCents: 11000 });
+  });
+
+  test('nothing remaining, or overspent, is no warning', () => {
+    expect(remainingOverFreeCash({ remainingCents: 0, freeCents: -5000 })).toBeNull();
+    expect(remainingOverFreeCash({ remainingCents: -1000, freeCents: 5000 })).toBeNull();
   });
 });

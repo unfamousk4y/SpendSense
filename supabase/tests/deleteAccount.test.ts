@@ -4,12 +4,12 @@
 // project (development only). Fictional data only.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { createAccount, deleteMyAccount, insertIncome, insertPurchase, loadLedger, saveAllowanceChange, saveRelease } from '../../src/data/ledgerStore'
+import { insertCorrection, createAccount, deleteMyAccount, insertIncome, insertPurchase, loadLedger, saveAllowanceChange, saveRelease } from '../../src/data/ledgerStore'
 import { signIn, type TestUser } from './clients.ts'
 
 const WEEK_1 = '2026-10-19'
 const WEEK_2 = '2026-10-26'
-const TABLES = ['accounts', 'purchases', 'income_receipts', 'bills', 'week_plans', 'allowance_changes', 'week_closures', 'savings_releases']
+const TABLES = ['accounts', 'purchases', 'income_receipts', 'balance_corrections', 'bills', 'week_plans', 'allowance_changes', 'week_closures', 'savings_releases']
 
 function newClient(): SupabaseClient {
   return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_PUBLISHABLE_KEY!, {
@@ -63,12 +63,14 @@ async function fillAccount(client: SupabaseClient) {
     suggestedCents: null,
   })
   if (!change.ok) throw new Error(change.message)
+  const corrected = await insertCorrection(client, accountId, { id: crypto.randomUUID(), date: WEEK_2, differenceCents: -100 })
+  if (!corrected.ok) throw new Error(corrected.message)
   const release = await saveRelease(client, accountId, { id: crypto.randomUUID(), madeOn: WEEK_2, cents: 100 })
   if (!release.ok) throw new Error(release.message)
 }
 
-const FULL_ACCOUNT = { accounts: 1, purchases: 2, income_receipts: 1, bills: 1, week_plans: 2, allowance_changes: 1, week_closures: 1, savings_releases: 1 }
-const NOTHING = { accounts: 0, purchases: 0, income_receipts: 0, bills: 0, week_plans: 0, allowance_changes: 0, week_closures: 0, savings_releases: 0 }
+const FULL_ACCOUNT = { accounts: 1, purchases: 2, income_receipts: 1, balance_corrections: 1, bills: 1, week_plans: 2, allowance_changes: 1, week_closures: 1, savings_releases: 1 }
+const NOTHING = { accounts: 0, purchases: 0, income_receipts: 0, balance_corrections: 0, bills: 0, week_plans: 0, allowance_changes: 0, week_closures: 0, savings_releases: 0 }
 
 let b: TestUser
 

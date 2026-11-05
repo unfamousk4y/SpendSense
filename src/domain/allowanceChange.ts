@@ -142,3 +142,21 @@ function requireSafeInteger(value: number, name: string): void {
     throw new RangeError(`${name} must be a whole number within the safe integer range (got ${value})`);
   }
 }
+
+/**
+ * Whether this week's remaining amount is more than the money available for it.
+ * The allowance is a snapshot and never changes by itself, so a later bill or
+ * balance correction can leave it promising more than free cash covers. Null
+ * when it does not, including when the week is already overspent.
+ */
+export function remainingOverFreeCash({
+  remainingCents,
+  freeCents,
+}: {
+  remainingCents: number;
+  freeCents: number;
+}): { availableCents: number; overCents: number } | null {
+  const availableCents = Math.max(0, freeCents);
+  const overCents = remainingCents - availableCents;
+  return overCents > 0 ? { availableCents, overCents } : null;
+}

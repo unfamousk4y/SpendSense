@@ -17,6 +17,7 @@ type CalculationBreakdownProps = {
   lastChange?: { fromCents: number; madeOnLabel: string };
   onAdjust: () => void;
   onRelease: () => void;
+  onCorrect: () => void;
 };
 
 /** The arithmetic behind the big number, written out line by line. */
@@ -89,6 +90,9 @@ export function CalculationBreakdown(props: CalculationBreakdownProps) {
             Release savings
           </button>
         )}
+        <button type="button" className={styles.adjust} onClick={props.onCorrect}>
+          Correct balance
+        </button>
       </div>
 
       <p className={styles.footnote}>

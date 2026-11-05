@@ -154,6 +154,22 @@
   font-weight: 650;
 }
 
+/* A warning that stays: the big number above is promising more than exists. */
+.overFreeCash {
+  margin-top: 12px;
+  padding-left: 10px;
+  border-left: 3px solid var(--red);
+}
+
+.overFreeCash .addIncome {
+  margin-top: 8px;
+}
+
+.overFreeCashText {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
 .note {
   margin: 12px 0 0;
   padding-left: 10px;
