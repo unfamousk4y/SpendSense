@@ -149,6 +149,12 @@
   margin-top: 8px;
 }
 
+.planEndingHint {
+  margin: 4px 0 0;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
 .planEndingText {
   margin: 0;
   font-weight: 650;

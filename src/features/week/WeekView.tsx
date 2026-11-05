@@ -334,6 +334,7 @@ export function WeekView({
   const cashPanel = (id: CashPanelId, className: string, headingId: string) => (
     <CashPanel
       layoutId={id}
+      expanded={expandedFrom !== null}
       className={className}
       headingId={headingId}
       currency={currency}
@@ -428,6 +429,9 @@ export function WeekView({
               <p id="plan-ending-text" className={styles.planEndingText}>
                 {today === account.planEndDate ? 'Your plan ends today.' : `Your plan ended on ${planEndLabel}.`}
               </p>
+              {today > account.planEndDate && (
+                <p className={styles.planEndingHint}>If you were expecting money, record it once it arrives. If it is late, choose the next date you expect it.</p>
+              )}
               <button type="button" className={styles.addIncome} onClick={() => setDialog({ mode: 'newPlan' })}>
                 Start a new plan
               </button>

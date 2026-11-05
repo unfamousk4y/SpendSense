@@ -36,6 +36,7 @@ export function PlanEndedScreen({ account, today, onCurrencyChange, onStart, acc
         ))}
       </div>
       <h1 className={styles.heading}>Your {currency} plan ended on {dateLabel(account.planEndDate)}</h1>
+      <p className={styles.note}>If you were expecting money, record it once it arrives. If it is late, choose the next date you expect it.</p>
       <NewPlanForm
         // Typed dates and amounts belong to one currency: switching starts a clean form.
         key={currency}

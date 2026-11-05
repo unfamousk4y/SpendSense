@@ -11,6 +11,10 @@
   font-size: 1.25rem;
 }
 
+.note {
+  margin: 0;
+}
+
 .switch {
   display: flex;
   gap: 8px;

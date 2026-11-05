@@ -9,6 +9,8 @@ import styles from './CashPanel.module.css';
 type CashPanelProps = {
   /** Shared with the expanded view so it grows out of, and returns to, this panel. */
   layoutId: string;
+  /** Whether any panel is expanded. The panel only animates its layout when this changes. */
+  expanded: boolean;
   className: string;
   headingId: string;
   currency: Currency;
@@ -21,12 +23,15 @@ type CashPanelProps = {
  * layers separate in depth while hovered, and a tap or click opens the
  * focused view. data-depth marks how far each layer rises (see the CSS).
  */
-export function CashPanel({ layoutId, className, headingId, currency, allocation, onOpen }: CashPanelProps) {
+export function CashPanel({ layoutId, expanded, className, headingId, currency, allocation, onOpen }: CashPanelProps) {
   const tilt = usePointerTilt();
 
   return (
     <m.section
       layoutId={layoutId}
+      // Without this it also glides whenever content above it changes height, and
+      // passes over the chart above on the way.
+      layoutDependency={expanded}
       className={`${className} ${styles.panel}`}
       aria-labelledby={headingId}
       style={tilt.style}

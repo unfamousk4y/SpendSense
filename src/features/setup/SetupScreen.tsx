@@ -161,7 +161,7 @@ export function SetupScreen({ currency, today, onCurrencyChange, onCreate, accou
             }}
             aria-invalid={preview?.kind === 'planEndPassed' || (showProblems && !endDateEntered)}
           />
-          <span className={styles.hint}>How long this money has to last, such as your next expected payment date.</span>
+          <span className={styles.hint}>A date you choose, or your next expected payment date. Expected money is not counted until you record it as received.</span>
           {preview?.kind === 'planEndPassed' && <span className={formStyles.error}>Choose today or a later date.</span>}
           {showProblems && !endDateEntered && <span className={formStyles.error}>Choose an end date.</span>}
         </label>

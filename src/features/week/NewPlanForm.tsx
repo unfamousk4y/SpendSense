@@ -103,6 +103,9 @@ export function NewPlanForm({
 
       <label className={formStyles.field}>
         <span className={formStyles.label}>How long should this money last?</span>
+        <span id="new-plan-end-hint" className={styles.footnote}>
+          A date you choose, or your next expected payment date. Expected money is not counted until you record it as received.
+        </span>
         <input
           type="date"
           className={`${formStyles.textInput} ${endProblem ? formStyles.invalid : ''}`}
@@ -113,7 +116,7 @@ export function NewPlanForm({
             setShowProblems(false);
           }}
           aria-invalid={endProblem !== null}
-          aria-describedby={endProblem ? 'new-plan-end-error' : undefined}
+          aria-describedby={endProblem ? 'new-plan-end-error' : 'new-plan-end-hint'}
         />
         {endProblem && (
           <span id="new-plan-end-error" className={formStyles.error}>
