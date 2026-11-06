@@ -1,6 +1,5 @@
 // Two different signed-in users must never read, change, delete or link to
-// each other's rows (QUALITY_REVIEW.md: "All unauthorized operations
-// denied"). Every attack below runs as user B against user A's data, through
+// each other's rows. Every attack below runs as user B against user A's data, through
 // the same publishable key a browser uses. Fictional data only.
 import { createClient } from '@supabase/supabase-js'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'

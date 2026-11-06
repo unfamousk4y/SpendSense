@@ -123,4 +123,3 @@ The free beta is feasible at this small scale within provider limits; this is no
 - Redesign triggers: bank synchronization, cross-currency transfers, multiple accounts per currency, offline multi-device writes or paid subscriptions require a new architecture decision before implementation. None belongs to the current milestone.
 - Operational recovery: before beta, demonstrate export of fictional data and restoration into a clean test context. Explain which schema and records are preserved. Do not assume a free provider offers automatic backups sufficient for recovery. Use minimal error diagnostics with operation identifiers, never account balances or transaction descriptions in logs.
 
-See QUALITY_REVIEW.md for the compact decision/review method and measurable targets. These are proposed acceptance criteria, not measurements already obtained.
