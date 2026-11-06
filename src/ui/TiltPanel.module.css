@@ -1,0 +1,30 @@
+.tilt {
+  position: relative;
+  transition: box-shadow 200ms ease;
+}
+
+/* A soft light that follows the pointer (--glare-x/-y come from usePointerTilt). */
+.glare {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle at var(--glare-x, 50%) var(--glare-y, 50%),
+    rgb(255 255 255 / 0.05),
+    transparent 55%
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+
+/* Only for a real mouse, when motion is welcome and the student has tilt switched on. */
+@media (hover: hover) and (pointer: fine) and (min-width: 760px) and (prefers-reduced-motion: no-preference) {
+  :root[data-fx-tilt='on'] .tilt:hover {
+    box-shadow: 0 14px 32px var(--shadow);
+  }
+
+  :root[data-fx-tilt='on'] .tilt:hover .glare {
+    opacity: 1;
+  }
+}

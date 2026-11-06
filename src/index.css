@@ -1,24 +1,36 @@
-/* Shared design tokens: a precise instrument with a violet accent. Light mode
-   sits on a warm off-white canvas; dark mode on purple-tinted black and greys.
-   Color always carries meaning, and every meaning also has a text label. */
+/* Shared design tokens: a holographic console in lavender, with icy cyan for
+   supporting light. Light mode is crisp and lightly tinted; dark mode sits on a
+   blue-violet near black. Color always carries meaning, and every meaning also
+   has a text label. Green, amber and red are kept for financial states only. */
 :root {
-  --canvas: #f6f3ec;
-  --surface: #fffdf8;
-  --ink: #1d2126;
-  --ink-muted: #565c66;
-  --rule: #d9d2c4;
-  --accent: #6d28d9; /* money available to spend this week */
-  --accent-strong: #5b21b6;
+  --canvas: #f3f4fb;
+  --surface: #ffffff;
+  --surface-raised: #eeedf9;
+  --panel: rgb(255 255 255 / 0.9);
+  --panel-border: #d5d5ea;
+  --ink: #191830;
+  --ink-muted: #53516c;
+  --rule: #dcdcec;
+  --accent: #6a3de0; /* money available to spend this week */
+  --accent-strong: #5429c4;
   --on-accent: #ffffff;
-  --accent-soft: #c4b5fd; /* free cash for later weeks */
-  --neutral-part: #8b8794; /* cash reserved for bills */
-  --teal: #2b7a70; /* protected savings */
+  --accent-soft: #c7b8fb; /* free cash for later weeks */
+  --cyan: #0a7286; /* supporting light, never a financial state */
+  --neutral-part: #8a8aa3; /* cash reserved for bills */
+  --teal: #0b7566; /* protected savings */
   --amber-ink: #8a4b00; /* notices and demo labels */
-  --amber-soft: #fbefd9;
+  --amber-soft: #fdf1db;
   --red: #b42318; /* overspending and shortfalls */
-  --shadow: rgb(45 20 90 / 0.25);
-  --radius: 6px;
+  --shadow: rgb(40 25 90 / 0.18);
+  --glow-accent: rgb(106 61 224 / 0.35);
+  --glow-cyan: rgb(10 127 150 / 0.3);
+  --grid-line: rgb(70 60 150 / 0.07);
+  --ambient-a: rgb(106 61 224 / 0.1);
+  --ambient-b: rgb(10 127 150 / 0.08);
+  --radius: 10px;
+  --radius-lg: 16px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, monospace;
 
   color-scheme: light;
 }
@@ -31,41 +43,59 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --canvas: #0e0d12;
-    --surface: #18161f;
-    --ink: #ece9f3;
-    --ink-muted: #a7a2b4;
-    --rule: #2f2c38;
-    --accent: #b39dfa;
-    --accent-strong: #c9b8ff;
-    --on-accent: #16121f;
-    --accent-soft: #5b4a99;
-    --neutral-part: #6c6878;
-    --teal: #5cc1b2;
+    --canvas: #0a0a14;
+    --surface: #161426;
+    --surface-raised: #221f38;
+    --panel: rgb(22 20 38 / 0.9);
+    --panel-border: #35324f;
+    --ink: #efedf9;
+    --ink-muted: #b4b0c9;
+    --rule: #2f2c47;
+    --accent: #bca9ff;
+    --accent-strong: #d3c6ff;
+    --on-accent: #15102a;
+    --accent-soft: #5e4ea3;
+    --cyan: #7fe6f5;
+    --neutral-part: #77738d;
+    --teal: #5fd6b4;
     --amber-ink: #f2b766;
     --amber-soft: #2a2113;
-    --red: #f47a6f;
-    --shadow: rgb(0 0 0 / 0.5);
+    --red: #ff8b80;
+    --shadow: rgb(0 0 0 / 0.55);
+    --glow-accent: rgb(188 169 255 / 0.4);
+    --glow-cyan: rgb(127 230 245 / 0.35);
+    --grid-line: rgb(170 160 255 / 0.06);
+    --ambient-a: rgb(130 100 255 / 0.13);
+    --ambient-b: rgb(90 210 235 / 0.08);
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --canvas: #0e0d12;
-  --surface: #18161f;
-  --ink: #ece9f3;
-  --ink-muted: #a7a2b4;
-  --rule: #2f2c38;
-  --accent: #b39dfa;
-  --accent-strong: #c9b8ff;
-  --on-accent: #16121f;
-  --accent-soft: #5b4a99;
-  --neutral-part: #6c6878;
-  --teal: #5cc1b2;
+  --canvas: #0a0a14;
+  --surface: #161426;
+  --surface-raised: #221f38;
+  --panel: rgb(22 20 38 / 0.9);
+  --panel-border: #35324f;
+  --ink: #efedf9;
+  --ink-muted: #b4b0c9;
+  --rule: #2f2c47;
+  --accent: #bca9ff;
+  --accent-strong: #d3c6ff;
+  --on-accent: #15102a;
+  --accent-soft: #5e4ea3;
+  --cyan: #7fe6f5;
+  --neutral-part: #77738d;
+  --teal: #5fd6b4;
   --amber-ink: #f2b766;
   --amber-soft: #2a2113;
-  --red: #f47a6f;
-  --shadow: rgb(0 0 0 / 0.5);
+  --red: #ff8b80;
+  --shadow: rgb(0 0 0 / 0.55);
+  --glow-accent: rgb(188 169 255 / 0.4);
+  --glow-cyan: rgb(127 230 245 / 0.35);
+  --grid-line: rgb(170 160 255 / 0.06);
+  --ambient-a: rgb(130 100 255 / 0.13);
+  --ambient-b: rgb(90 210 235 / 0.08);
 }
 
 *,
@@ -79,8 +109,41 @@ body {
   background: var(--canvas);
   color: var(--ink);
   font-family: var(--font);
+  font-variant-numeric: tabular-nums;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Background effects. Behind everything, unmoving, and unable to catch a click. */
+:root[data-fx-background='on'] body::before,
+:root[data-fx-background='on'] body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+:root[data-fx-background='on'] body::before {
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 90% 80% at 50% 15%, #000 20%, transparent 90%);
+}
+
+:root[data-fx-background='on'] body::after {
+  background:
+    radial-gradient(ellipse 55% 45% at 22% 0%, var(--ambient-a), transparent 70%),
+    radial-gradient(ellipse 45% 40% at 85% 12%, var(--ambient-b), transparent 70%);
+}
+
+:root[data-fx-background='on'][data-fx-level='subtle'] body::before {
+  opacity: 0.7;
+}
+
+:root[data-fx-background='on'][data-fx-level='subtle'] body::after {
+  opacity: 0.7;
 }
 
 :focus-visible {
@@ -88,8 +151,17 @@ body {
   outline-offset: 2px;
 }
 
+/* Registered so the edge light's angle can be animated (see WeekView.module.css). */
+@property --edge-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     transition: none !important;
     animation: none !important;
   }

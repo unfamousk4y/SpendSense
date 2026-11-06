@@ -6,6 +6,8 @@ import styles from './CashAllocationChart.module.css';
 type CashAllocationChartProps = {
   currency: Currency;
   allocation: CashAllocation;
+  /** Draw the ring in once when it first appears, where effects allow it. */
+  reveal?: boolean;
 };
 
 const LABELS: Record<AllocationKey, string> = {
@@ -22,7 +24,7 @@ const GAP = 0.8;
  * Donut of current cash with at most four slices. The ring is hidden from
  * screen readers; the list beside it carries every label, amount and percent.
  */
-export function CashAllocationChart({ currency, allocation }: CashAllocationChartProps) {
+export function CashAllocationChart({ currency, allocation, reveal = false }: CashAllocationChartProps) {
   if (allocation.kind === 'shortfall') {
     return (
       <p className={styles.shortfall}>
@@ -57,7 +59,7 @@ export function CashAllocationChart({ currency, allocation }: CashAllocationChar
             .map((slice) => (
               <circle
                 key={slice.key}
-                className={`${styles.slice} ${styles[slice.key]}`}
+                className={`${styles.slice} ${styles[slice.key]} ${reveal ? styles.reveal : ''}`}
                 cx="60"
                 cy="60"
                 r="48"

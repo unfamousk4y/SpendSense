@@ -12,6 +12,22 @@
         var saved = localStorage.getItem('spendsense-theme');
         if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
       } catch (e) {}
+      // The same for effects, so none flash on before React loads. Subtle unless
+      // a choice is stored; src/ui/appearance.ts holds the same names and rules.
+      (function () {
+        var fx = { background: true, tilt: true, edgeMotion: true, chartAnimation: true, level: 'subtle' };
+        try {
+          var stored = JSON.parse(localStorage.getItem('spendsense-effects'));
+          if (stored && typeof stored.background === 'boolean' && typeof stored.tilt === 'boolean' &&
+              typeof stored.edgeMotion === 'boolean' && typeof stored.chartAnimation === 'boolean') fx = stored;
+        } catch (e) {}
+        var data = document.documentElement.dataset;
+        data.fxBackground = fx.background ? 'on' : 'off';
+        data.fxTilt = fx.tilt ? 'on' : 'off';
+        data.fxEdge = fx.edgeMotion ? 'on' : 'off';
+        data.fxChart = fx.chartAnimation ? 'on' : 'off';
+        data.fxLevel = !fx.background && !fx.tilt && !fx.edgeMotion && !fx.chartAnimation ? 'off' : fx.level === 'full' ? 'full' : 'subtle';
+      })();
     </script>
   </head>
   <body>

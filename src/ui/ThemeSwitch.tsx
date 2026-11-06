@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { applyTheme, readStoredTheme, type ThemeChoice } from './theme';
 import styles from './ThemeSwitch.module.css';
 
@@ -8,7 +8,8 @@ const OPTIONS: { value: ThemeChoice; label: string }[] = [
   { value: 'dark', label: 'Dark' },
 ];
 
-export function ThemeSwitch() {
+export function ThemeSwitch({ label = 'Appearance' }: { label?: string }) {
+  const labelId = useId();
   // Passing a function means localStorage is read once, on the first draw only.
   const [choice, setChoice] = useState<ThemeChoice>(readStoredTheme);
 
@@ -18,9 +19,9 @@ export function ThemeSwitch() {
   }, [choice]);
 
   return (
-    <div className={styles.switch} role="group" aria-labelledby="theme-label">
-      <span id="theme-label" className={styles.label}>
-        Appearance
+    <div className={styles.switch} role="group" aria-labelledby={labelId}>
+      <span id={labelId} className={styles.label}>
+        {label}
       </span>
       <div className={styles.options}>
         {OPTIONS.map((option) => (

@@ -14,7 +14,10 @@ import { summarizeWeek, type Purchase } from '../../domain/week';
 import type { SaveResult } from '../../data/ledgerStore';
 import type { WeekAccount } from '../../domain/ledger';
 import { Money } from '../../ui/Money';
-import { ThemeSwitch } from '../../ui/ThemeSwitch';
+import { AppearanceMenu } from '../../ui/AppearanceMenu';
+import { usePauseEffectsWhenHidden } from '../../ui/useAppearance';
+import { TiltPanel } from '../../ui/TiltPanel';
+import { SummaryCard } from './SummaryCard';
 import { AdjustAllowanceDialog } from './AdjustAllowanceDialog';
 import type { SavingsRelease } from '../../domain/release';
 import { BillDialog } from './BillDialog';
@@ -81,12 +84,7 @@ type DialogState =
   | { mode: 'release' }
   | null;
 
-/**
- * The cash panel is drawn twice (below the number on phones, in the side column
- * on desktop; CSS hides one). Each copy has its own layoutId so the expanded
- * view grows out of, and returns to, the copy that was actually tapped.
- */
-type CashPanelId = 'cash-phone' | 'cash-desktop';
+const CASH_PANEL_ID = 'cash-panel';
 
 /** What the confirmation line under the remaining amount reports. */
 type LastAction =
@@ -156,8 +154,9 @@ export function WeekView({
   accountControls,
 }: WeekViewProps) {
   const [dialog, setDialog] = useState<DialogState>(() => dialogForDraft(restoredDraft, account));
-  // Which cash panel is expanded into the focused view, if any.
-  const [expandedFrom, setExpandedFrom] = useState<CashPanelId | null>(null);
+  // Whether the cash panel is expanded into the focused view.
+  const [cashExpanded, setCashExpanded] = useState(false);
+  usePauseEffectsWhenHidden();
   // The last change, for the confirmation line. Cleared when switching account.
   const [lastAction, setLastAction] = useState<LastAction>(null);
 
@@ -357,18 +356,6 @@ export function WeekView({
 
   const cashAllocation = allocateCash({ ...cashParts, weekRemainingCents: summary.remainingCents });
 
-  const cashPanel = (id: CashPanelId, className: string, headingId: string) => (
-    <CashPanel
-      layoutId={id}
-      expanded={expandedFrom !== null}
-      className={className}
-      headingId={headingId}
-      currency={currency}
-      allocation={cashAllocation}
-      onOpen={() => setExpandedFrom(id)}
-    />
-  );
-
   const breakdown = (
     <CalculationBreakdown
       currency={currency}
@@ -396,7 +383,7 @@ export function WeekView({
   );
 
   return (
-    <div className={`${styles.page} ${expandedFrom ? styles.receded : ''}`}>
+    <div className={`${styles.page} ${cashExpanded ? styles.receded : ''}`}>
       {onNextDay && (
         <div className={styles.demoBanner}>
           <p className={styles.demoText}>
@@ -441,11 +428,155 @@ export function WeekView({
             <time dateTime={account.planEndDate}>{planEndLabel}</time>
           </p>
         </div>
+        <AppearanceMenu />
       </header>
 
       <main className={styles.layout}>
-        <div className={styles.primary}>
-          {account.previousClosure && (
+        {/* Keeps the reading order on every width: status and action, summaries, charts, details. */}
+        <TiltPanel className={`${styles.panel} ${styles.hero} ${styles.edgeLit}`} aria-labelledby="remaining-heading">
+          <div className={styles.amountWrap}>
+            <h1 id="remaining-heading" className={styles.eyebrow}>
+              {overspent ? 'Overspent this week' : 'Weekly remaining'}
+            </h1>
+            <p className={`${styles.remaining} ${overspent ? styles.overspent : ''}`}>
+              <Money cents={Math.abs(summary.remainingCents)} currency={currency} />
+            </p>
+          </div>
+          <div className={styles.heroRow}>
+            <p className={styles.subline}>
+              of <Money cents={account.chosenAllowanceCents} currency={currency} /> allowance ·{' '}
+              <Money cents={summary.spentCents} currency={currency} /> spent
+            </p>
+            <div className={styles.actionBar}>
+              <button type="button" className={styles.addButton} onClick={() => setDialog({ mode: 'add' })}>
+                + Add spending
+              </button>
+            </div>
+          </div>
+          {/* Stays until it is no longer true, unlike the confirmation line below. */}
+          {overFreeCash && (
+            <div className={styles.overFreeCash} role="status">
+              <p className={styles.overFreeCashText}>
+                {overFreeCash.availableCents > 0 ? (
+                  <>
+                    Only <Money cents={overFreeCash.availableCents} currency={currency} /> of this is available.
+                  </>
+                ) : (
+                  'None of this is available.'
+                )}{' '}
+                Your weekly remaining is <Money cents={overFreeCash.overCents} currency={currency} /> more than your free
+                cash.
+              </p>
+              <button type="button" className={styles.addIncome} onClick={() => setDialog({ mode: 'allowance' })}>
+                Adjust allowance
+              </button>
+            </div>
+          )}
+          {account.chosenAllowanceCents !== account.recommendedAllowanceCents && (
+            <p className={styles.note}>
+              You chose <Money cents={account.chosenAllowanceCents} currency={currency} />; the
+              suggestion was <Money cents={account.recommendedAllowanceCents} currency={currency} />.
+            </p>
+          )}
+          {/* role="status" makes screen readers announce the change without moving focus. */}
+          <p className={styles.savedStatus} role="status">
+            {lastAction?.kind === 'purchase' && (
+              <>
+                {lastAction.verb} <Money cents={lastAction.purchase.cents} currency={currency} /> ·{' '}
+                {purchaseTitle(lastAction.purchase)}
+              </>
+            )}
+            {lastAction?.kind === 'income' && (
+              <>
+                {lastAction.verb} <Money cents={lastAction.income.cents} currency={currency} /> of income. Your
+                allowance has not changed; adjust it if you want to.
+              </>
+            )}
+            {lastAction?.kind === 'correction' && (
+              <>
+                {lastAction.verb === 'Saved' ? 'Saved the balance correction' : 'Undid the balance correction'}. Cash is now{' '}
+                <Money cents={lastAction.cashAfterCents} currency={currency} />. Your allowance has not changed; adjust it if you
+                want to.
+              </>
+            )}
+            {lastAction?.kind === 'bill' && (
+              <>
+                {lastAction.verb} bill: {lastAction.bill.name}, <Money cents={lastAction.bill.cents} currency={currency} />.
+                Your allowance has not changed; adjust it if you want to.
+              </>
+            )}
+            {lastAction?.kind === 'billPaid' && (
+              <>
+                {lastAction.verb === 'Paid' ? 'Paid' : 'Updated the payment for'} {lastAction.name},{' '}
+                <Money cents={lastAction.cents} currency={currency} />.{' '}
+                {lastAction.restCents !== undefined && (
+                  <>
+                    <Money cents={lastAction.restCents} currency={currency} /> is still in your unpaid bills.{' '}
+                  </>
+                )}
+                Bill payments are not spending, so your weekly remaining has not changed.
+              </>
+            )}
+            {lastAction?.kind === 'billUnpaid' && (
+              <>
+                Undid the payment for {lastAction.name}. <Money cents={lastAction.cents} currency={currency} /> is back
+                in cash and the bill is unpaid again.
+              </>
+            )}
+            {lastAction?.kind === 'newPlan' && (
+              <>New plan saved, running until {lastAction.endLabel}. Your allowance has not changed; adjust it if you want to.</>
+            )}
+            {lastAction?.kind === 'allowance' && (
+              <>
+                Allowance changed from <Money cents={lastAction.change.fromCents} currency={currency} /> to{' '}
+                <Money cents={lastAction.change.toCents} currency={currency} />
+              </>
+            )}
+            {lastAction?.kind === 'release' && (
+              <>
+                Released <Money cents={lastAction.release.cents} currency={currency} /> from protected savings. Adjust
+                the allowance to spend it.
+              </>
+            )}
+          </p>
+        </TiltPanel>
+
+        <div className={styles.summaries}>
+          <SummaryCard
+            className={styles.panel}
+            enterOrder={1}
+            label="Current cash"
+            cents={currentCashCents}
+            currency={currency}
+            hint={
+              <>
+                <Money cents={freeCents} currency={currency} /> free after savings and bills
+              </>
+            }
+          />
+          <SummaryCard
+            className={styles.panel}
+            enterOrder={2}
+            label="Protected savings"
+            cents={account.protectedCents}
+            currency={currency}
+            tone="protected"
+            hint="Set aside, still in your account"
+          />
+          <SummaryCard
+            className={styles.panel}
+            enterOrder={3}
+            label="Unpaid bills"
+            cents={account.commitmentsCents}
+            currency={currency}
+            hint={`Due by ${planEndLabel}`}
+          />
+        </div>
+
+        {(account.previousClosure || canStartPlan) && (
+          <div className={styles.notices}>
+        {account.previousClosure && (
+          <TiltPanel as="div">
             <ClosureSummary
               currency={currency}
               closure={account.previousClosure}
@@ -453,142 +584,29 @@ export function WeekView({
               protectedNowCents={account.protectedCents}
               onAdjust={() => setDialog({ mode: 'allowance' })}
             />
-          )}
-          {canStartPlan && (
-            <div className={styles.planEnding} role="group" aria-labelledby="plan-ending-text">
-              <p id="plan-ending-text" className={styles.planEndingText}>
-                {today === account.planEndDate ? 'Your plan ends today.' : `Your plan ended on ${planEndLabel}.`}
-              </p>
-              {today > account.planEndDate && (
-                <p className={styles.planEndingHint}>If you were expecting money, record it once it arrives. If it is late, choose the next date you expect it.</p>
-              )}
-              <button type="button" className={styles.addIncome} onClick={() => setDialog({ mode: 'newPlan' })}>
-                Start a new plan
-              </button>
-            </div>
-          )}
-          <section aria-labelledby="remaining-heading">
-            <h1 id="remaining-heading" className={styles.eyebrow}>
-              {overspent ? 'Overspent this week' : 'Weekly remaining'}
-            </h1>
-            <p className={`${styles.remaining} ${overspent ? styles.overspent : ''}`}>
-              <Money cents={Math.abs(summary.remainingCents)} currency={currency} />
+          </TiltPanel>
+        )}
+        {canStartPlan && (
+          <div className={styles.planEnding} role="group" aria-labelledby="plan-ending-text">
+            <p id="plan-ending-text" className={styles.planEndingText}>
+              {today === account.planEndDate ? 'Your plan ends today.' : `Your plan ended on ${planEndLabel}.`}
             </p>
-            <p className={styles.subline}>
-              of <Money cents={account.chosenAllowanceCents} currency={currency} /> allowance ·{' '}
-              <Money cents={summary.spentCents} currency={currency} /> spent
-            </p>
-            {/* Stays until it is no longer true, unlike the confirmation line below. */}
-            {overFreeCash && (
-              <div className={styles.overFreeCash} role="status">
-                <p className={styles.overFreeCashText}>
-                  {overFreeCash.availableCents > 0 ? (
-                    <>
-                      Only <Money cents={overFreeCash.availableCents} currency={currency} /> of this is available.
-                    </>
-                  ) : (
-                    'None of this is available.'
-                  )}{' '}
-                  Your weekly remaining is <Money cents={overFreeCash.overCents} currency={currency} /> more than your free
-                  cash.
-                </p>
-                <button type="button" className={styles.addIncome} onClick={() => setDialog({ mode: 'allowance' })}>
-                  Adjust allowance
-                </button>
-              </div>
+            {today > account.planEndDate && (
+              <p className={styles.planEndingHint}>If you were expecting money, record it once it arrives. If it is late, choose the next date you expect it.</p>
             )}
-            {account.chosenAllowanceCents !== account.recommendedAllowanceCents && (
-              <p className={styles.note}>
-                You chose <Money cents={account.chosenAllowanceCents} currency={currency} />; the
-                suggestion was <Money cents={account.recommendedAllowanceCents} currency={currency} />.
-              </p>
-            )}
-            {/* role="status" makes screen readers announce the change without moving focus. */}
-            <p className={styles.savedStatus} role="status">
-              {lastAction?.kind === 'purchase' && (
-                <>
-                  {lastAction.verb} <Money cents={lastAction.purchase.cents} currency={currency} /> ·{' '}
-                  {purchaseTitle(lastAction.purchase)}
-                </>
-              )}
-              {lastAction?.kind === 'income' && (
-                <>
-                  {lastAction.verb} <Money cents={lastAction.income.cents} currency={currency} /> of income. Your
-                  allowance has not changed; adjust it if you want to.
-                </>
-              )}
-              {lastAction?.kind === 'correction' && (
-                <>
-                  {lastAction.verb === 'Saved' ? 'Saved the balance correction' : 'Undid the balance correction'}. Cash is now{' '}
-                  <Money cents={lastAction.cashAfterCents} currency={currency} />. Your allowance has not changed; adjust it if you
-                  want to.
-                </>
-              )}
-              {lastAction?.kind === 'bill' && (
-                <>
-                  {lastAction.verb} bill: {lastAction.bill.name}, <Money cents={lastAction.bill.cents} currency={currency} />.
-                  Your allowance has not changed; adjust it if you want to.
-                </>
-              )}
-              {lastAction?.kind === 'billPaid' && (
-                <>
-                  {lastAction.verb === 'Paid' ? 'Paid' : 'Updated the payment for'} {lastAction.name},{' '}
-                  <Money cents={lastAction.cents} currency={currency} />.{' '}
-                  {lastAction.restCents !== undefined && (
-                    <>
-                      <Money cents={lastAction.restCents} currency={currency} /> is still in your unpaid bills.{' '}
-                    </>
-                  )}
-                  Bill payments are not spending, so your weekly remaining has not changed.
-                </>
-              )}
-              {lastAction?.kind === 'billUnpaid' && (
-                <>
-                  Undid the payment for {lastAction.name}. <Money cents={lastAction.cents} currency={currency} /> is back
-                  in cash and the bill is unpaid again.
-                </>
-              )}
-              {lastAction?.kind === 'newPlan' && (
-                <>New plan saved, running until {lastAction.endLabel}. Your allowance has not changed; adjust it if you want to.</>
-              )}
-              {lastAction?.kind === 'allowance' && (
-                <>
-                  Allowance changed from <Money cents={lastAction.change.fromCents} currency={currency} /> to{' '}
-                  <Money cents={lastAction.change.toCents} currency={currency} />
-                </>
-              )}
-              {lastAction?.kind === 'release' && (
-                <>
-                  Released <Money cents={lastAction.release.cents} currency={currency} /> from protected savings. Adjust
-                  the allowance to spend it.
-                </>
-              )}
-            </p>
-            <div className={styles.actionBar}>
-              <button type="button" className={styles.addButton} onClick={() => setDialog({ mode: 'add' })}>
-                + Add spending
-              </button>
-            </div>
-          </section>
+            <button type="button" className={styles.addIncome} onClick={() => setDialog({ mode: 'newPlan' })}>
+              Start a new plan
+            </button>
+          </div>
+        )}
+          </div>
+        )}
 
-          <section className={styles.section} aria-labelledby="flow-heading">
-            <h2 id="flow-heading" className={styles.sectionTitle}>
-              Where this week’s allowance went
-            </h2>
-            <MoneyFlow
-              currency={currency}
-              flow={moneyFlow(account.chosenAllowanceCents, account.purchases)}
-              pulse={
-                lastAction?.kind === 'purchase' && lastAction.verb === 'Saved'
-                  ? { key: lastAction.purchase.category ?? 'none', id: lastAction.purchase.id }
-                  : undefined
-              }
-            />
-          </section>
-
-          {cashPanel('cash-phone', `${styles.section} ${styles.phoneOnly}`, 'cash-heading-phone')}
-
-          <section className={styles.section} aria-labelledby="trace-heading">
+        <TiltPanel
+          className={`${styles.panel} ${styles.chartPanel} ${styles.edgeLit}`}
+          enterOrder={4}
+          aria-labelledby="trace-heading"
+        >
             <h2 id="trace-heading" className={styles.sectionTitle}>
               Spending this week
             </h2>
@@ -604,9 +622,73 @@ export function WeekView({
               todayIndex={todayIndex}
               dayLabels={dayLabels}
             />
-          </section>
+        </TiltPanel>
 
-          <section className={styles.section} aria-labelledby="activity-heading">
+        <CashPanel
+          layoutId={CASH_PANEL_ID}
+          expanded={cashExpanded}
+          className={`${styles.panel} ${styles.cashPanel}`}
+          enterOrder={5}
+          headingId="cash-heading"
+          currency={currency}
+          allocation={cashAllocation}
+          onOpen={() => setCashExpanded(true)}
+        />
+
+        <div className={styles.column}>
+          <TiltPanel className={styles.panel} enterOrder={6} aria-labelledby="flow-heading">
+            <h2 id="flow-heading" className={styles.sectionTitle}>
+              Where this week’s allowance went
+            </h2>
+            <MoneyFlow
+              currency={currency}
+              flow={moneyFlow(account.chosenAllowanceCents, account.purchases)}
+              pulse={
+                lastAction?.kind === 'purchase' && lastAction.verb === 'Saved'
+                  ? { key: lastAction.purchase.category ?? 'none', id: lastAction.purchase.id }
+                  : undefined
+              }
+            />
+          </TiltPanel>
+
+          <TiltPanel className={styles.panel} enterOrder={8} aria-labelledby="income-heading">
+            <h2 id="income-heading" className={styles.sectionTitle}>
+              Income this week
+            </h2>
+            {incomeNewestFirst.length === 0 ? (
+              <p className={styles.empty}>No income recorded this week.</p>
+            ) : (
+              <ul className={styles.activity}>
+                {incomeNewestFirst.map((income) => (
+                  <li key={income.id}>
+                    <button
+                      type="button"
+                      className={styles.activityRow}
+                      onClick={() => setDialog({ mode: 'editIncome', income })}
+                    >
+                      <time className={styles.activityDay} dateTime={income.date}>
+                        {label(income.date, { weekday: 'short' })}
+                      </time>
+                      <span className={styles.merchant}>{income.source || 'Income'}</span>
+                      <span className={styles.amount}>
+                        <Money cents={income.cents} currency={currency} />
+                      </span>
+                      <span className={styles.editHint} aria-hidden="true">
+                        Edit
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button type="button" className={styles.addIncome} onClick={() => setDialog({ mode: 'addIncome' })}>
+              + Add income
+            </button>
+          </TiltPanel>
+        </div>
+
+        <div className={styles.column}>
+          <TiltPanel className={styles.panel} enterOrder={7} aria-labelledby="activity-heading">
             <h2 id="activity-heading" className={styles.sectionTitle}>
               This week’s activity
             </h2>
@@ -650,45 +732,10 @@ export function WeekView({
                 ))}
               </ul>
             )}
-          </section>
-
-          <section className={styles.section} aria-labelledby="income-heading">
-            <h2 id="income-heading" className={styles.sectionTitle}>
-              Income this week
-            </h2>
-            {incomeNewestFirst.length === 0 ? (
-              <p className={styles.empty}>No income recorded this week.</p>
-            ) : (
-              <ul className={styles.activity}>
-                {incomeNewestFirst.map((income) => (
-                  <li key={income.id}>
-                    <button
-                      type="button"
-                      className={styles.activityRow}
-                      onClick={() => setDialog({ mode: 'editIncome', income })}
-                    >
-                      <time className={styles.activityDay} dateTime={income.date}>
-                        {label(income.date, { weekday: 'short' })}
-                      </time>
-                      <span className={styles.merchant}>{income.source || 'Income'}</span>
-                      <span className={styles.amount}>
-                        <Money cents={income.cents} currency={currency} />
-                      </span>
-                      <span className={styles.editHint} aria-hidden="true">
-                        Edit
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <button type="button" className={styles.addIncome} onClick={() => setDialog({ mode: 'addIncome' })}>
-              + Add income
-            </button>
-          </section>
+          </TiltPanel>
 
           {account.corrections.length > 0 && (
-            <section className={styles.section} aria-labelledby="corrections-heading">
+            <TiltPanel className={styles.panel} aria-labelledby="corrections-heading">
               <h2 id="corrections-heading" className={styles.sectionTitle}>
                 Balance corrections this week
               </h2>
@@ -717,10 +764,17 @@ export function WeekView({
                   </li>
                 ))}
               </ul>
-            </section>
+            </TiltPanel>
           )}
 
-          <section className={styles.section} aria-labelledby="bills-heading">
+        </div>
+
+        <div className={styles.column}>
+          <TiltPanel
+            className={`${styles.panel} ${styles.billsPanel}`}
+            enterOrder={9}
+            aria-labelledby="bills-heading"
+          >
             <h2 id="bills-heading" className={styles.sectionTitle}>
               Bills
             </h2>
@@ -808,41 +862,33 @@ export function WeekView({
                 </ul>
               </>
             )}
-          </section>
-
-          <details className={`${styles.section} ${styles.phoneOnly}`}>
-            <summary className={styles.summary}>How this is calculated</summary>
-            {breakdown}
-          </details>
+          </TiltPanel>
         </div>
 
-        {/* Desktop shows these side by side instead of below; phones hide this column. */}
-        <aside className={styles.sideColumn}>
-          {cashPanel('cash-desktop', styles.card, 'cash-heading')}
-          <section className={styles.card} aria-labelledby="calc-heading">
-            <h2 id="calc-heading" className={styles.sectionTitle}>
-              How this is calculated <span className={styles.currencyTag}>{currency}</span>
-            </h2>
-            {breakdown}
-          </section>
-        </aside>
+        <TiltPanel
+          className={`${styles.panel} ${styles.calcPanel}`}
+          enterOrder={10}
+          aria-labelledby="calc-heading"
+        >
+          <h2 id="calc-heading" className={styles.sectionTitle}>
+            How this is calculated <span className={styles.currencyTag}>{currency}</span>
+          </h2>
+          {breakdown}
+        </TiltPanel>
       </main>
 
-      <footer className={styles.footer}>
-        <ThemeSwitch />
-        {accountControls}
-      </footer>
+      <footer className={styles.footer}>{accountControls}</footer>
 
       {/* AnimatePresence keeps the view on screen while it shrinks back to its panel. */}
       <AnimatePresence>
-        {expandedFrom && (
+        {cashExpanded && (
           <ExpandedCashView
-            key={expandedFrom}
-            layoutId={expandedFrom}
+            key={CASH_PANEL_ID}
+            layoutId={CASH_PANEL_ID}
             currency={currency}
             allocation={cashAllocation}
             purchases={account.purchases}
-            onClose={() => setExpandedFrom(null)}
+            onClose={() => setCashExpanded(false)}
           />
         )}
       </AnimatePresence>

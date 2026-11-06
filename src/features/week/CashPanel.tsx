@@ -1,8 +1,6 @@
-import * as m from 'motion/react-m';
 import type { CashAllocation } from '../../domain/allocation';
 import type { Currency } from '../../domain/money';
-import { HOVER_LIFT, PANEL_TRANSITION } from '../../ui/motionTokens';
-import { usePointerTilt } from '../../ui/usePointerTilt';
+import { TiltPanel } from '../../ui/TiltPanel';
 import { CashAllocationChart } from './CashAllocationChart';
 import styles from './CashPanel.module.css';
 
@@ -12,6 +10,8 @@ type CashPanelProps = {
   /** Whether any panel is expanded. The panel only animates its layout when this changes. */
   expanded: boolean;
   className: string;
+  /** Its place in the page's arrival order. */
+  enterOrder: number;
   headingId: string;
   currency: Currency;
   allocation: CashAllocation;
@@ -19,38 +19,31 @@ type CashPanelProps = {
 };
 
 /**
- * "Where your cash is" as a physical panel: it tilts toward the mouse, its
- * layers separate in depth while hovered, and a tap or click opens the
- * focused view. data-depth marks how far each layer rises (see the CSS).
+ * "Where your cash is": it leans toward the mouse like every panel, and its layers
+ * also separate in depth while hovered. A tap or click opens the focused view.
+ * data-depth marks how far each layer rises (see the CSS).
  */
-export function CashPanel({ layoutId, expanded, className, headingId, currency, allocation, onOpen }: CashPanelProps) {
-  const tilt = usePointerTilt();
-
+export function CashPanel({ layoutId, expanded, className, enterOrder, headingId, currency, allocation, onOpen }: CashPanelProps) {
   return (
-    <m.section
+    <TiltPanel
       layoutId={layoutId}
       // Without this it also glides whenever content above it changes height, and
       // passes over the chart above on the way.
       layoutDependency={expanded}
       className={`${className} ${styles.panel}`}
+      enterOrder={enterOrder}
       aria-labelledby={headingId}
-      style={tilt.style}
-      onPointerMove={tilt.onPointerMove}
-      onPointerLeave={tilt.onPointerLeave}
-      whileHover={HOVER_LIFT}
-      transition={PANEL_TRANSITION}
       // Tap or click anywhere opens it; the button below gives keyboard users
       // a clear control, and its click bubbles up to here.
       onClick={onOpen}
     >
-      <span className={styles.glare} aria-hidden="true" />
       <h2 id={headingId} className={styles.title} data-depth="1">
         Where your {currency} cash is
       </h2>
-      <CashAllocationChart currency={currency} allocation={allocation} />
+      <CashAllocationChart currency={currency} allocation={allocation} reveal />
       <button type="button" className={styles.expandButton} data-expands={layoutId} data-depth="1">
         See spending by category
       </button>
-    </m.section>
+    </TiltPanel>
   );
 }

@@ -1,6 +1,6 @@
 /* Phone first. Bottom padding leaves room for the fixed Add spending bar. */
 .page {
-  max-width: 1120px;
+  max-width: 2048px;
   margin: 0 auto;
   padding: 12px 16px 104px;
   transition: transform 250ms cubic-bezier(0.2, 0, 0, 1);
@@ -14,10 +14,9 @@
   }
 }
 
-
 .demoBanner {
   margin: 0 0 14px;
-  padding: 6px 10px;
+  padding: 6px 12px;
   border: 1px dashed var(--amber-ink);
   border-radius: var(--radius);
   background: var(--amber-soft);
@@ -51,7 +50,9 @@
   cursor: pointer;
 }
 
+/* Positioned so the appearance panel can be measured from its full width. */
 .header {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
@@ -75,23 +76,27 @@
   min-height: 44px;
   padding: 0 14px;
   border: 0;
-  border-radius: 4px;
+  border-radius: calc(var(--radius) - 2px);
   background: transparent;
   color: var(--ink-muted);
-  font: inherit;
+  font-family: var(--mono);
   font-size: 0.875rem;
   font-weight: 650;
-  letter-spacing: 0.06em;
   cursor: pointer;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.currencyOption:hover {
+  color: var(--ink);
 }
 
 .currencyOption[aria-pressed='true'] {
-  background: var(--ink);
-  color: var(--surface);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .dates {
-  text-align: right;
+  margin-right: auto;
 }
 
 .weekDates {
@@ -102,46 +107,156 @@
 
 .layout {
   display: grid;
-  gap: 24px;
-  margin-top: 24px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 16px;
 }
 
-.primary {
+/* The shared surface: nearly solid behind text, with a fine edge and slight depth. */
+.panel {
+  position: relative;
   min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: 0 1px 2px var(--shadow);
+}
+
+/* A quick, small settle as the page arrives. Content is readable throughout, and
+   Off or reduced motion skips it. Uses `translate`, which the tilt's `transform`
+   does not overwrite. */
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-fx-level='off']) .panel {
+    animation: panelIn 280ms cubic-bezier(0.2, 0, 0, 1) backwards;
+    animation-delay: calc(var(--enter, 0) * 30ms);
+  }
+
+  /* Holds the phone's fixed Add spending bar, which a moving parent would carry along. */
+  :root:not([data-fx-level='off']) .hero {
+    animation-name: fadeIn;
+  }
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The slow light on selected edges: a thin ring cut out of a rotating gradient, so
+   it only ever crosses the border, never the text. Unable to catch a click. */
+.edgeLit::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--edge-angle),
+    transparent 0 74%,
+    var(--glow-cyan) 84%,
+    var(--glow-accent) 92%,
+    transparent 100%
+  );
+  opacity: 0;
+  pointer-events: none;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-fx-edge='on'] .edgeLit::after {
+    opacity: 0.7;
+    animation: edgeTurn 22s linear infinite;
+  }
+
+  :root[data-fx-edge='on'][data-fx-level='full'] .edgeLit::after {
+    opacity: 1;
+    animation-duration: 14s;
+  }
+
+  :root[data-page-hidden='true'] .edgeLit::after {
+    animation-play-state: paused;
+  }
+}
+
+@keyframes edgeTurn {
+  to {
+    --edge-angle: 360deg;
+  }
+}
+
+:root[data-fx-level='full'] .hero {
+  box-shadow: 0 0 36px -14px var(--glow-accent);
+}
+
+.hero {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+/* Its own size container: the amount scales to the panel, not the window, so a long
+   value still fits. Separate from the panel because a container would also trap
+   the phone's fixed bar. */
+.amountWrap {
+  container-type: inline-size;
 }
 
 .eyebrow {
   margin: 0;
   color: var(--ink-muted);
-  font-size: 0.8125rem;
+  font-size: 0.9375rem;
   font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .remaining {
   margin: 2px 0 0;
   color: var(--accent);
-  font-size: clamp(2.75rem, 13vw, 4rem);
-  font-weight: 650;
+  font-size: clamp(2.25rem, 12.5cqi, 4.75rem);
+  font-weight: 680;
   letter-spacing: -0.02em;
   line-height: 1.05;
 }
 
-.overspent {
+:root[data-fx-level='full'] .remaining {
+  text-shadow: 0 0 26px var(--glow-accent);
+}
+
+.overspent,
+:root[data-fx-level='full'] .overspent {
   color: var(--red);
+  text-shadow: none;
+}
+
+.heroRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-top: 8px;
 }
 
 .subline {
-  margin: 8px 0 0;
+  margin: 0;
   color: var(--ink-muted);
   font-size: 0.9375rem;
 }
 
 /* The plan's end date has arrived: everything still works, with a way forward. */
 .planEnding {
-  margin-bottom: 20px;
-  padding-left: 10px;
+  padding-left: 12px;
   border-left: 3px solid var(--accent);
 }
 
@@ -162,8 +277,8 @@
 
 /* A warning that stays: the big number above is promising more than exists. */
 .overFreeCash {
-  margin-top: 12px;
-  padding-left: 10px;
+  margin-top: 10px;
+  padding-left: 12px;
   border-left: 3px solid var(--red);
 }
 
@@ -177,8 +292,8 @@
 }
 
 .note {
-  margin: 12px 0 0;
-  padding-left: 10px;
+  margin: 10px 0 0;
+  padding-left: 12px;
   border-left: 3px solid var(--rule);
   color: var(--ink-muted);
   font-size: 0.875rem;
@@ -196,6 +311,7 @@
 .addButton {
   width: 100%;
   min-height: 52px;
+  padding: 0 24px;
   border: 0;
   border-radius: var(--radius);
   background: var(--accent);
@@ -204,12 +320,18 @@
   font: inherit;
   font-size: 1rem;
   font-weight: 650;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background-color 150ms ease;
+  transition: background-color 150ms ease, box-shadow 150ms ease, scale 100ms ease;
 }
 
 .addButton:hover {
   background: var(--accent-strong);
+  box-shadow: 0 6px 22px var(--glow-accent);
+}
+
+.addButton:active {
+  scale: 0.985;
 }
 
 .addIncome {
@@ -223,25 +345,54 @@
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease;
 }
 
-.section {
-  margin-top: 28px;
-  padding-top: 14px;
-  border-top: 1px solid var(--rule);
+.addIncome:hover {
+  border-color: var(--accent);
+}
+
+.addIncome:active {
+  background: var(--surface-raised);
+}
+
+/* Supporting numbers: on a phone, cash across the top and the other two beneath. */
+.summaries {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summaries > :first-child {
+  grid-column: 1 / -1;
+}
+
+.notices {
+  display: grid;
+  gap: 12px;
+}
+
+/* Matches the closure card inside, for its highlight. */
+.notices > div {
+  border-radius: var(--radius);
+}
+
+/* Below the wide layout, each column's panels simply join the page's one list. */
+.column {
+  display: contents;
 }
 
 .sectionTitle {
-  margin: 0 0 10px;
-  font-size: 1rem;
+  margin: 0 0 12px;
+  font-size: 1.0625rem;
   font-weight: 650;
 }
 
 .currencyTag {
   margin-left: 6px;
   color: var(--ink-muted);
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
 }
 
 .activity {
@@ -258,32 +409,36 @@
   align-items: baseline;
   width: 100%;
   min-height: 44px;
-  padding: 10px 4px;
+  padding: 10px 6px;
   border: 0;
   border-bottom: 1px solid var(--rule);
+  border-radius: 6px;
   background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
+  transition: background-color 120ms ease;
 }
 
 .activityRow:hover {
-  background: var(--surface);
+  background: var(--surface-raised);
 }
 
 .editHint {
   color: var(--accent);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 650;
 }
 
 .activityDay {
   color: var(--ink-muted);
+  font-family: var(--mono);
   font-size: 0.8125rem;
 }
 
 .merchant {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
@@ -291,14 +446,13 @@
   display: block;
   margin-top: 2px;
   color: var(--ink-muted);
-  font-size: 0.75rem;
-  letter-spacing: 0.02em;
+  font-size: 0.8125rem;
 }
 
 /* Reserves its line so the layout does not jump when a save is confirmed. */
 .savedStatus {
   min-height: 1.45em;
-  margin: 10px 0 0;
+  margin: 8px 0 0;
   color: var(--teal);
   font-size: 0.875rem;
   font-weight: 600;
@@ -323,11 +477,16 @@
 
 /* A due date such as "Nov 20" is wider than a weekday. */
 .billRow {
-  grid-template-columns: 3.25rem 1fr auto auto;
+  grid-template-columns: 3.75rem 1fr auto auto;
 }
 
-/* A row and its Pay button, which cannot sit inside the row's own button. On a
-   phone Pay goes underneath, so the name and amount keep the full width. */
+/* The panel's own width decides where Pay goes, since a column can be narrow on a wide screen. */
+.billsPanel {
+  container-type: inline-size;
+}
+
+/* A row and its Pay button, which cannot sit inside the row's own button. Pay goes
+   underneath when narrow, so the name and amount keep the full width. */
 .billItem {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -351,9 +510,18 @@
   font: inherit;
   font-weight: 650;
   cursor: pointer;
+  transition: background-color 150ms ease;
 }
 
-@media (min-width: 480px) {
+.payButton:hover {
+  background: var(--surface-raised);
+}
+
+.payButton:active {
+  background: var(--accent-soft);
+}
+
+@container (min-width: 460px) {
   .billItem {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 12px;
@@ -367,7 +535,7 @@
 
 .subTitle {
   margin: 20px 0 4px;
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   font-weight: 650;
 }
 
@@ -380,7 +548,7 @@
 
 .billPrompt {
   margin: 0 0 12px;
-  padding-left: 10px;
+  padding-left: 12px;
   border-left: 3px solid var(--accent);
   font-size: 0.875rem;
 }
@@ -390,77 +558,105 @@
   justify-content: space-between;
   gap: 12px;
   margin: 8px 0 0;
-  padding: 10px 4px 0;
-  border-top: 1px solid var(--rule);
+  padding: 10px 6px 0;
   color: var(--ink-muted);
   font-size: 0.875rem;
-}
-
-.summary {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  font-weight: 650;
-  cursor: pointer;
 }
 
 .footer {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
-  margin-top: 32px;
-  padding-top: 16px;
-  border-top: 1px solid var(--rule);
+  margin-top: 20px;
 }
 
-details[open] > .summary {
-  margin-bottom: 8px;
-}
-
-.sideColumn {
-  display: none;
-}
-
-/* Desktop: the cash chart and calculation get their own column instead of
-   sitting below the activity or hiding behind a tap. */
-@media (min-width: 900px) {
-  .page {
-    padding: 24px 32px 48px;
+/* Tablet: two columns, with the main reading items across both. */
+@media (min-width: 760px) {
+  .layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .layout {
-    grid-template-columns: minmax(0, 1.35fr) minmax(340px, 1fr);
-    gap: 56px;
-    align-items: start;
+  .hero,
+  .summaries,
+  .notices,
+  .chartPanel,
+  .billsPanel,
+  .calcPanel {
+    grid-column: 1 / -1;
+  }
+
+  .summaries {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .summaries > :first-child {
+    grid-column: auto;
   }
 
   .actionBar {
     position: static;
-    max-width: 280px;
-    margin-top: 20px;
   }
 
   .addButton {
     box-shadow: none;
   }
 
-  .phoneOnly {
-    display: none;
+  .page {
+    padding-bottom: 40px;
+  }
+}
+
+/* Laptop and desktop: most of the window, in twelve flexible columns. */
+@media (min-width: 1100px) {
+  .page {
+    padding: 20px clamp(40px, 3.4vw, 64px) 40px;
   }
 
-  /* Not sticky: with the chart and calculation stacked it is taller than a
-     laptop screen, and a sticky column that tall would hide its own bottom. */
-  .sideColumn {
-    display: grid;
+  .layout {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
     gap: 20px;
   }
 
-  .card {
-    padding: 20px 24px;
-    border: 1px solid var(--rule);
-    border-radius: var(--radius);
-    background: var(--surface);
+  .panel {
+    padding: 20px 22px;
+  }
+
+  .hero {
+    grid-column: span 6;
+  }
+
+  .summaries {
+    grid-column: span 6;
+    gap: 20px;
+  }
+
+  .notices {
+    grid-column: 1 / -1;
+  }
+
+  .chartPanel {
+    grid-column: span 8;
+  }
+
+  .cashPanel {
+    grid-column: span 4;
+  }
+
+  /* Three columns of panels, whose last panels stretch so the bottoms line up. */
+  .column {
+    display: flex;
+    flex-direction: column;
+    grid-column: span 4;
+    gap: 20px;
+  }
+
+  .column > :last-child {
+    flex: 1;
+  }
+
+  .calcPanel {
+    grid-column: 1 / -1;
   }
 }

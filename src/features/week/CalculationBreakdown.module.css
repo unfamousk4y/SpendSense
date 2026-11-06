@@ -1,8 +1,120 @@
+.compact {
+  display: grid;
+  gap: 12px 40px;
+}
+
+.equation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  margin: 0;
+}
+
+.term dt {
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+}
+
+.term dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.result dd {
+  font-weight: 700;
+}
+
+/* Fixed-width operator column so the labels line up like a written sum. */
+.op {
+  display: inline-block;
+  width: 1.1em;
+  color: var(--ink-muted);
+  font-family: var(--mono);
+  font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-top: 14px;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  rotate: -45deg;
+  transition: rotate 200ms ease;
+}
+
+.toggle[aria-expanded='true'] .chevron {
+  rotate: 45deg;
+}
+
+/* Sliding a grid row from 0fr to 1fr animates to the content's real height,
+   whatever it is, without measuring anything. */
+.expander {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1), visibility 240ms;
+}
+
+.open {
+  grid-template-rows: 1fr;
+  visibility: visible;
+}
+
+.expanderInner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* As many equal columns as fit, so the three sums never leave an empty one. */
+.sums {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: 8px 40px;
+  padding-top: 14px;
+}
+
 .sum {
   display: grid;
   grid-template-columns: 1fr auto;
+  align-content: start;
   column-gap: 16px;
-  margin: 0 0 20px;
+  margin: 0;
 }
 
 .sum dt,
@@ -14,14 +126,6 @@
 
 .sum dd {
   text-align: right;
-}
-
-/* Fixed-width operator column so the labels line up like a written sum. */
-.op {
-  display: inline-block;
-  width: 1.1em;
-  color: var(--ink-muted);
-  font-weight: 600;
 }
 
 .total {
@@ -48,13 +152,6 @@
   color: var(--red);
 }
 
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 16px;
-}
-
 .adjust {
   min-height: 44px;
   padding: 0 16px;
@@ -65,14 +162,26 @@
   font: inherit;
   font-weight: 650;
   cursor: pointer;
+  transition: background-color 150ms ease;
 }
 
 .adjust:hover {
+  background: var(--surface-raised);
+}
+
+.adjust:active {
   background: var(--accent-soft);
 }
 
 .footnote {
-  margin: 0;
+  margin: 14px 0 0;
   color: var(--ink-muted);
   font-size: 0.8125rem;
+}
+
+@media (min-width: 1100px) {
+  .compact {
+    grid-template-columns: auto auto;
+    justify-content: start;
+  }
 }
