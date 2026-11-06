@@ -28,3 +28,6 @@ dist-ssr
 .env
 .env.*
 !.env.test.example
+
+# A restore file holds financial details
+*.restore.sql
