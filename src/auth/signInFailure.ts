@@ -8,5 +8,5 @@
 export function signInFailureFromAddress(address: string): string | null {
   const url = new URL(address);
   const fromHash = new URLSearchParams(url.hash.slice(1));
-  return url.searchParams.has('error_description') || fromHash.has('error_description') ? 'Please try again.' : null;
+  return url.searchParams.has('error_description') || fromHash.has('error_description') ? 'Please try again. During the beta, only invited Google accounts can sign in.' : null;
 }

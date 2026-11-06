@@ -12,7 +12,7 @@ export type EffectsSettings = Record<EffectControl, boolean> & {
   level: EffectLevel;
 };
 
-// index.html reads the same key before React loads, so effects never flash on.
+// public/boot-appearance.js reads the same key before React loads, so effects never flash on.
 export const EFFECTS_STORAGE_KEY = 'spendsense-effects';
 
 export const EFFECT_CONTROLS: EffectControl[] = ['background', 'tilt', 'edgeMotion', 'chartAnimation'];
@@ -72,7 +72,7 @@ export function readStoredEffects(): EffectsSettings {
   }
 }
 
-/** Sets the attributes the CSS reads and remembers the choice. Same names as index.html. */
+/** Sets the attributes the CSS reads and remembers the choice. Same names as public/boot-appearance.js. */
 export function applyEffects(settings: EffectsSettings): void {
   const { dataset } = document.documentElement;
   dataset.fxBackground = settings.background ? 'on' : 'off';

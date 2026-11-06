@@ -66,6 +66,12 @@ export function SignInScreen({ notConfigured, sessionLost, onTryDemo }: SignInSc
           </p>
         )}
 
+        <p className={styles.note}>
+          You enter everything yourself, so the numbers are only as current as your last entry. SpendSense does not
+          connect to your bank, import files or move money. It is an early beta, so use Download my data regularly to
+          keep your own copy.
+        </p>
+
         {onTryDemo && (
           <button type="button" className={styles.demo} onClick={onTryDemo}>
             Try the demo without signing in (development only)

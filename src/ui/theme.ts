@@ -3,7 +3,7 @@
 
 export type ThemeChoice = 'auto' | 'light' | 'dark';
 
-// index.html reads the same key before React loads, to avoid a white flash.
+// public/boot-appearance.js reads the same key before React loads, to avoid a white flash.
 export const THEME_STORAGE_KEY = 'spendsense-theme';
 
 export function readStoredTheme(): ThemeChoice {
