@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../data/supabaseClient';
+import { hasDraft } from '../data/formDraft';
 import { ThemeSwitch } from '../ui/ThemeSwitch';
 import { signInFailureFromAddress } from './signInFailure';
+import { startGoogleSignIn } from './startGoogleSignIn';
 import styles from './SignInScreen.module.css';
 
 type SignInScreenProps = {
   /** .env.local is missing: explain instead of offering a button that cannot work. */
   notConfigured: boolean;
+  /** The last session ended without the student choosing to sign out. */
+  sessionLost?: boolean;
   /** Development only: open the fictional demo without an account. */
   onTryDemo?: () => void;
 };
 
-export function SignInScreen({ notConfigured, onTryDemo }: SignInScreenProps) {
+export function SignInScreen({ notConfigured, sessionLost, onTryDemo }: SignInScreenProps) {
   const [error, setError] = useState<string | null>(() => signInFailureFromAddress(window.location.href));
   const [redirecting, setRedirecting] = useState(false);
 
@@ -21,17 +24,11 @@ export function SignInScreen({ notConfigured, onTryDemo }: SignInScreenProps) {
   }, []);
 
   async function signInWithGoogle() {
-    if (!supabase) return;
     setError(null);
     setRedirecting(true);
-    // Leaves this page for Google. Google returns to Supabase, which returns
-    // here (redirectTo) with a one-time code that the client swaps for a session.
-    const { error: startError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin },
-    });
-    if (startError) {
-      setError(startError.message);
+    const message = await startGoogleSignIn();
+    if (message) {
+      setError(message);
       setRedirecting(false);
     }
   }
@@ -41,6 +38,15 @@ export function SignInScreen({ notConfigured, onTryDemo }: SignInScreenProps) {
       <div className={styles.card}>
         <h1 className={styles.title}>SpendSense</h1>
         <p className={styles.lead}>See what is left to spend this week, from money you have actually received.</p>
+
+        {sessionLost && (
+          <p className={styles.lead} role="status">
+            You have been signed out, so sign in again to continue. Everything you saved is safe.{' '}
+            {hasDraft()
+              ? 'What you were saving comes back after you sign in, ready to check and save.'
+              : 'Anything not yet saved will need to be entered again.'}
+          </p>
+        )}
 
         {notConfigured ? (
           <p className={styles.problem} role="alert">

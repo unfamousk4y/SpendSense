@@ -13,6 +13,8 @@ type BillDialogProps = {
   currency: Currency;
   /** Present when editing: the form starts filled in and offers Delete. */
   existing?: Bill;
+  /** What the student was saving when their session ended. Not saved yet. */
+  restored?: Bill;
   planEndDate: IsoDate;
   planEndLabel: string;
   commitmentsCents: number;
@@ -39,6 +41,7 @@ const AMOUNT_MESSAGES: Record<AmountInvalidReason, string> = {
 export function BillDialog({
   currency,
   existing,
+  restored,
   planEndDate,
   planEndLabel,
   commitmentsCents,
@@ -53,10 +56,11 @@ export function BillDialog({
 }: BillDialogProps) {
   // An edit keeps its id; a new bill gets one per opening of the form, which
   // every attempt to save reuses, so a retry cannot add the bill twice.
-  const [billId] = useState(() => existing?.id ?? crypto.randomUUID());
-  const [name, setName] = useState(existing?.name ?? '');
-  const [amountText, setAmountText] = useState(existing ? formatCents(existing.cents) : '');
-  const [dueOn, setDueOn] = useState(existing?.dueOn ?? '');
+  const start = restored ?? existing;
+  const [billId] = useState(() => start?.id ?? crypto.randomUUID());
+  const [name, setName] = useState(start?.name ?? '');
+  const [amountText, setAmountText] = useState(start ? formatCents(start.cents) : '');
+  const [dueOn, setDueOn] = useState(start?.dueOn ?? '');
   // Set only when Save is pressed, so half-typed text is not flagged early.
   const [showProblems, setShowProblems] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -135,6 +139,12 @@ export function BillDialog({
             Close
           </button>
         </div>
+
+        {restored && (
+          <p className={formStyles.restored} role="status">
+            Brought back after you signed in. This is not saved yet, so check it and save.
+          </p>
+        )}
 
         <label className={formStyles.field}>
           <span className={formStyles.label}>Bill name</span>

@@ -15,6 +15,7 @@ import {
   payBillRow,
   saveAllowanceChange,
   saveRelease,
+  SESSION_ENDED,
   startNewPlan,
   undoBillPaymentRow,
   updateBillRow,
@@ -27,7 +28,10 @@ import type { AllowanceChange } from '../../domain/allowanceChange';
 import type { Bill, BillPayment } from '../../domain/bills';
 import type { BalanceCorrection } from '../../domain/correction';
 import { localDateIn, mondayOf, type IsoDate } from '../../domain/dates';
-import { hasPlanThisWeek, ledgerReducer, weekAccount, type LedgerAction } from '../../domain/ledger';
+import { accountCash, hasPlanThisWeek, ledgerReducer, weekAccount, type LedgerAction } from '../../domain/ledger';
+import { SessionExpiredDialog } from '../../auth/SessionExpiredDialog';
+import { clearDraft, keepDraft, takeDraft, type RestoredDraft } from '../../data/formDraft';
+import { recoverFromSave } from '../../data/sessionRecovery';
 import type { IncomeReceipt } from '../../domain/income';
 import type { Currency } from '../../domain/money';
 import type { SavingsRelease } from '../../domain/release';
@@ -38,7 +42,7 @@ import { PlanEndedScreen } from '../week/PlanEndedScreen';
 import { WeekView } from '../week/WeekView';
 import styles from './SavedAccount.module.css';
 
-type SavedAccountProps = { client: SupabaseClient; accountControls: ReactNode };
+type SavedAccountProps = { client: SupabaseClient; userId: string; accountControls: ReactNode };
 
 type LoadState =
   | { status: 'loading' }
@@ -46,13 +50,15 @@ type LoadState =
   | { status: 'ready'; loaded: LoadedLedger };
 
 /** Loads the signed-in student's data, then shows setup or their week. */
-export function SavedAccount({ client, accountControls }: SavedAccountProps) {
+export function SavedAccount({ client, userId, accountControls }: SavedAccountProps) {
   // The student's own calendar date, from the time zone their browser reports.
   const [today] = useState(() => localDateIn(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone));
   const [currency, setCurrency] = useState<Currency>('USD');
   // Changing this runs the load again (Try again, or after creating an account).
   const [loadNumber, setLoadNumber] = useState(0);
   const [load, setLoad] = useState<LoadState>({ status: 'loading' });
+  // Whatever the student was saving when their session ended, once it has loaded.
+  const [restored, setRestored] = useState<RestoredDraft | null>(null);
 
   useEffect(() => {
     // If the screen goes away first, a late reply must not be applied.
@@ -61,9 +67,13 @@ export function SavedAccount({ client, accountControls }: SavedAccountProps) {
       if (ignore) return;
       if (result.ok) {
         setLoad({ status: 'ready', loaded: result.loaded });
-        // Open on an account that exists, unless the chosen one does.
+        // A kept draft is taken here so it opens once. Its account must still exist.
+        const taken = takeDraft(userId);
+        const draft = taken && result.loaded.ledger.accounts[taken.currency] ? taken : null;
+        setRestored(draft);
+        // Open on the draft's account, or one that exists, unless the chosen one does.
         setCurrency((chosen) =>
-          result.loaded.ledger.accounts[chosen] ? chosen : result.loaded.ledger.accounts.BSD ? 'BSD' : chosen,
+          draft ? draft.currency : result.loaded.ledger.accounts[chosen] ? chosen : result.loaded.ledger.accounts.BSD ? 'BSD' : chosen,
         );
       } else {
         setLoad({ status: 'failed', message: result.message });
@@ -72,7 +82,7 @@ export function SavedAccount({ client, accountControls }: SavedAccountProps) {
     return () => {
       ignore = true;
     };
-  }, [client, today, loadNumber]);
+  }, [client, userId, today, loadNumber]);
 
   function reload() {
     setLoad({ status: 'loading' });
@@ -98,7 +108,9 @@ export function SavedAccount({ client, accountControls }: SavedAccountProps) {
       // Fresh reducer state from each load.
       key={loadNumber}
       client={client}
+      userId={userId}
       loaded={load.loaded}
+      restored={restored}
       today={today}
       currency={currency}
       onCurrencyChange={setCurrency}
@@ -110,6 +122,7 @@ export function SavedAccount({ client, accountControls }: SavedAccountProps) {
 
 type SavedWeekProps = SavedAccountProps & {
   loaded: LoadedLedger;
+  restored: RestoredDraft | null;
   today: IsoDate;
   currency: Currency;
   onCurrencyChange: (currency: Currency) => void;
@@ -117,44 +130,76 @@ type SavedWeekProps = SavedAccountProps & {
   onAccountCreated: () => void;
 };
 
-function SavedWeek({ client, loaded, today, currency, onCurrencyChange, onAccountCreated, accountControls }: SavedWeekProps) {
+function SavedWeek({ client, userId, loaded, restored, today, currency, onCurrencyChange, onAccountCreated, accountControls }: SavedWeekProps) {
   const [ledger, dispatch] = useReducer(ledgerReducer, loaded.ledger);
   const account = ledger.accounts[currency];
   const accountId = loaded.accountIds[currency];
   const weekPlanId = loaded.weekPlanIds[currency]?.[mondayOf(today)];
+  // Hooks stay above the early returns below.
+  const [sessionExpired, setSessionExpired] = useState<{ draftKept: boolean } | null>(null);
+
+  /** A refused session is renewed if it can be, and the student is asked to sign in if not. */
+  async function checked(save: Promise<SaveResult>, action?: LedgerAction): Promise<SaveResult> {
+    const saved = await save;
+    // Kept before trying to renew: a failed renewal can sign the student out,
+    // which removes this whole screen before anything after it could run.
+    const refused = !saved.ok && saved.message === SESSION_ENDED;
+    const draftKept = refused && action !== undefined && keepDraft(action, userId);
+    const { result, expired } = await recoverFromSave(client, saved);
+    if (expired) setSessionExpired({ draftKept });
+    else if (draftKept) clearDraft();
+    return result;
+  }
+
+  const sessionPrompt = sessionExpired && (
+    <SessionExpiredDialog
+      draftKept={sessionExpired.draftKept}
+      onClose={() => {
+        // The form is still open behind this, so the next attempt keeps it again.
+        clearDraft();
+        setSessionExpired(null);
+      }}
+    />
+  );
 
   if (!account || !accountId) {
     return (
-      <SetupScreen
-        // Typed numbers belong to one currency: switching starts a clean form.
-        key={currency}
-        currency={currency}
-        today={today}
-        onCurrencyChange={onCurrencyChange}
-        onCreate={async (newAccount) => {
-          const result = await createAccount(client, newAccount);
-          if (result.ok) onAccountCreated();
-          return result;
-        }}
-        accountControls={accountControls}
-      />
+      <>
+        <SetupScreen
+          // Typed numbers belong to one currency: switching starts a clean form.
+          key={currency}
+          currency={currency}
+          today={today}
+          onCurrencyChange={onCurrencyChange}
+          onCreate={async (newAccount) => {
+            const result = await checked(createAccount(client, newAccount));
+            if (result.ok) onAccountCreated();
+            return result;
+          }}
+          accountControls={accountControls}
+        />
+        {sessionPrompt}
+      </>
     );
   }
 
   if (!hasPlanThisWeek(account, today) || !weekPlanId) {
     return (
-      <PlanEndedScreen
-        account={account}
-        today={today}
-        onCurrencyChange={onCurrencyChange}
-        onStart={async (endDate, week) => {
-          const result = await startNewPlan(client, accountId, today, endDate, week);
-          // Load again: the new week plan's id is needed to change its allowance later.
-          if (result.ok) onAccountCreated();
-          return result;
-        }}
-        accountControls={accountControls}
-      />
+      <>
+        <PlanEndedScreen
+          account={account}
+          today={today}
+          onCurrencyChange={onCurrencyChange}
+          onStart={async (endDate, week) => {
+            const result = await checked(startNewPlan(client, accountId, today, endDate, week));
+            // Load again: the new week plan's id is needed to change its allowance later.
+            if (result.ok) onAccountCreated();
+            return result;
+          }}
+          accountControls={accountControls}
+        />
+        {sessionPrompt}
+      </>
     );
   }
 
@@ -163,7 +208,7 @@ function SavedWeek({ client, loaded, today, currency, onCurrencyChange, onAccoun
    * update the screen. A failed save can never look like a saved one.
    */
   async function saveThenApply(save: Promise<SaveResult>, action: LedgerAction): Promise<SaveResult> {
-    const result = await save;
+    const result = await checked(save, action);
     if (result.ok) dispatch(action);
     return result;
   }
@@ -189,7 +234,7 @@ function SavedWeek({ client, loaded, today, currency, onCurrencyChange, onAccoun
         }
         onDeleteIncome={(id: string) => saveThenApply(deleteIncomeRow(client, id), { type: 'deleteIncome', currency, id })}
         onAddCorrection={(correction: BalanceCorrection) =>
-          saveThenApply(insertCorrection(client, accountId, correction), { type: 'addCorrection', currency, correction })
+          saveThenApply(insertCorrection(client, accountId, correction, accountCash(account).currentCashCents), { type: 'addCorrection', currency, correction })
         }
         onDeleteCorrection={(id: string) => saveThenApply(deleteCorrectionRow(client, id), { type: 'deleteCorrection', currency, id })}
         onAddBill={(bill: Bill) => saveThenApply(insertBill(client, accountId, bill), { type: 'addBill', currency, bill })}
@@ -211,8 +256,10 @@ function SavedWeek({ client, loaded, today, currency, onCurrencyChange, onAccoun
         onReleaseSavings={(release: SavingsRelease) =>
           saveThenApply(saveRelease(client, accountId, release), { type: 'releaseSavings', currency, release })
         }
+        restoredDraft={restored?.currency === currency ? restored.draft : undefined}
         accountControls={accountControls}
       />
+      {sessionPrompt}
     </MotionProvider>
   );
 }

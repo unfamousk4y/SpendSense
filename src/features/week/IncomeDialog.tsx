@@ -15,6 +15,8 @@ type IncomeDialogProps = {
   dates: { date: IsoDate; label: string }[];
   /** Present when editing: the form starts filled in and offers Delete. */
   existing?: IncomeReceipt;
+  /** What the student was saving when their session ended. Not saved yet. */
+  restored?: IncomeReceipt;
   currentCashCents: number;
   freeCents: number;
   spentCents: number;
@@ -40,6 +42,7 @@ export function IncomeDialog({
   currency,
   dates,
   existing,
+  restored,
   currentCashCents,
   freeCents,
   spentCents,
@@ -52,10 +55,11 @@ export function IncomeDialog({
 }: IncomeDialogProps) {
   // An edit keeps its id; a new entry gets one per opening of the form, which
   // every attempt to save reuses, so a retry cannot count the money twice.
-  const [entryId] = useState(() => existing?.id ?? crypto.randomUUID());
-  const [amountText, setAmountText] = useState(existing ? formatCents(existing.cents) : '');
-  const [source, setSource] = useState(existing?.source ?? '');
-  const [date, setDate] = useState(existing?.date ?? dates[0].date);
+  const start = restored ?? existing;
+  const [entryId] = useState(() => start?.id ?? crypto.randomUUID());
+  const [amountText, setAmountText] = useState(start ? formatCents(start.cents) : '');
+  const [source, setSource] = useState(start?.source ?? '');
+  const [date, setDate] = useState(start && dates.some((option) => option.date === start.date) ? start.date : dates[0].date);
   // Set only when Save is pressed, so half-typed text is not flagged early.
   const [showProblem, setShowProblem] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -134,6 +138,12 @@ export function IncomeDialog({
             Close
           </button>
         </div>
+
+        {restored && (
+          <p className={formStyles.restored} role="status">
+            Brought back after you signed in. This is not saved yet, so check it and save.
+          </p>
+        )}
 
         <p className={styles.hint}>Record money once you have received it, not money you are expecting.</p>
 

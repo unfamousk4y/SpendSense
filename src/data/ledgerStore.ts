@@ -48,7 +48,7 @@ export type NewAccount = {
 const UNIQUE_VIOLATION = '23505';
 const SAVE_FAILED = 'Could not save. Check your connection and try again.';
 const LOAD_FAILED = 'Could not load your account. Check your connection and try again.';
-const SESSION_ENDED = 'Your sign-in has expired. Reload the page and sign in again.';
+export const SESSION_ENDED = 'Your sign-in has expired. Sign in again to save this.';
 
 function saveMessage(error: PostgrestError): string {
   switch (error.code) {
@@ -68,6 +68,8 @@ function saveMessage(error: PostgrestError): string {
       return 'Income can only be recorded once it has been received.';
     case 'SS005':
       return 'A payment can only be recorded once it has been made.';
+    case 'SS008':
+      return 'Your cash changed on another tab or device. Reload the page and check the difference again.';
     case 'SS007':
       return 'A correction can only be dated today or earlier.';
     case 'SS006':
@@ -268,15 +270,21 @@ export async function insertIncome(client: SupabaseClient, accountId: string, in
   return insertOnce(client, 'income_receipts', { id: income.id, account_id: accountId, ...incomeColumns(income) });
 }
 
-/** Saves a balance correction, with the same retry safety as a new purchase. */
-export async function insertCorrection(client: SupabaseClient, accountId: string, correction: BalanceCorrection): Promise<SaveResult> {
-  return insertOnce(client, 'balance_corrections', {
-    id: correction.id,
-    account_id: accountId,
-    corrected_on: correction.date,
-    difference_cents: correction.differenceCents,
-    note: correction.note ?? null,
+/**
+ * Saves a balance correction. The difference was worked out from the cash on
+ * screen, so the database refuses it if cash has changed since. Saving the same
+ * id again has nothing left to do.
+ */
+export async function insertCorrection(client: SupabaseClient, accountId: string, correction: BalanceCorrection, seenCashCents: number): Promise<SaveResult> {
+  const { error } = await client.rpc('save_balance_correction', {
+    p_id: correction.id,
+    p_account_id: accountId,
+    p_corrected_on: correction.date,
+    p_difference_cents: correction.differenceCents,
+    p_note: correction.note ?? null,
+    p_seen_cash_cents: seenCashCents,
   });
+  return error ? { ok: false, message: saveMessage(error) } : { ok: true };
 }
 
 /** Undoing something already gone is a success, as with purchases. */

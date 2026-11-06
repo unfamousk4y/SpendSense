@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { deleteMyAccount, exportOwnData, type SaveResult } from '../data/ledgerStore';
 import { localDateIn } from '../domain/dates';
 import { DeleteAccountDialog } from './DeleteAccountDialog';
-import { signOut } from './useAuth';
+import { expectSignOut, signOut } from './useAuth';
 import styles from './AccountControls.module.css';
 
 /** Saves text as a file on the student's device. Nothing leaves the browser. */
@@ -43,6 +43,7 @@ export function AccountControls({ client, email }: AccountControlsProps) {
     if (!deleted.ok) return deleted;
     // Local: the sign-in no longer exists on the server, so only this browser's
     // copy is left to clear. If this fails, Try again is safe and repeats it.
+    expectSignOut();
     const { error: signOutError } = await client.auth.signOut({ scope: 'local' });
     return signOutError ? { ok: false, message: 'Your account is deleted, but you could not be signed out here. Try again.' } : { ok: true };
   }

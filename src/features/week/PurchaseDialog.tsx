@@ -14,6 +14,8 @@ type PurchaseDialogProps = {
   dates: { date: IsoDate; label: string }[];
   /** Present when editing: the form starts filled in and offers Delete. */
   existing?: Purchase;
+  /** What the student was saving when their session ended. Not saved yet. */
+  restored?: Purchase;
   /** Resolves when the save is confirmed or has failed. On success the parent closes the form. */
   onSave: (purchase: Purchase) => Promise<SaveResult>;
   onDelete?: (id: string) => Promise<SaveResult>;
@@ -30,22 +32,28 @@ const AMOUNT_MESSAGES: Record<AmountInvalidReason, string> = {
   tooLarge: 'Amounts above 100,000.00 are not supported.',
 };
 
-export function PurchaseDialog({ currency, dates, existing, onSave, onDelete, onClose }: PurchaseDialogProps) {
+/** A restored date may have left the list if days passed while signed out. */
+function startingDate(start: Purchase | undefined, dates: { date: IsoDate }[]): IsoDate {
+  return start && dates.some((option) => option.date === start.date) ? start.date : dates[0].date;
+}
+
+export function PurchaseDialog({ currency, dates, existing, restored, onSave, onDelete, onClose }: PurchaseDialogProps) {
   const isEditing = existing !== undefined;
+  const start = restored ?? existing;
 
   // The id belongs to one real purchase for its whole life: an edit keeps the
   // existing one; a new entry gets one id per opening of the form, which every
   // save attempt reuses, so addPurchaseOnce can ignore a double tap.
-  const [entryId] = useState(() => existing?.id ?? crypto.randomUUID());
+  const [entryId] = useState(() => start?.id ?? crypto.randomUUID());
 
   // Controlled inputs: each box shows exactly what is in state. When editing,
   // they start from the existing purchase.
-  const [amountText, setAmountText] = useState(existing ? formatCents(existing.cents) : '');
-  const [category, setCategory] = useState<CategoryId | null>(existing?.category ?? null);
-  const [needOrWant, setNeedOrWant] = useState<NeedOrWant | null>(existing?.needOrWant ?? null);
-  const [merchant, setMerchant] = useState(existing?.merchant ?? '');
-  const [note, setNote] = useState(existing?.note ?? '');
-  const [date, setDate] = useState(existing?.date ?? dates[0].date);
+  const [amountText, setAmountText] = useState(start ? formatCents(start.cents) : '');
+  const [category, setCategory] = useState<CategoryId | null>(start?.category ?? null);
+  const [needOrWant, setNeedOrWant] = useState<NeedOrWant | null>(start?.needOrWant ?? null);
+  const [merchant, setMerchant] = useState(start?.merchant ?? '');
+  const [note, setNote] = useState(start?.note ?? '');
+  const [date, setDate] = useState(startingDate(start, dates));
   const [amountError, setAmountError] = useState<AmountInvalidReason | null>(null);
   // Delete asks first, inside the form, so one mis-tap cannot remove a purchase.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -133,6 +141,12 @@ export function PurchaseDialog({ currency, dates, existing, onSave, onDelete, on
             Close
           </button>
         </div>
+
+        {restored && (
+          <p className={styles.restored} role="status">
+            Brought back after you signed in. This is not saved yet, so check it and save.
+          </p>
+        )}
 
         <label className={styles.field}>
           <span className={styles.label}>Amount</span>

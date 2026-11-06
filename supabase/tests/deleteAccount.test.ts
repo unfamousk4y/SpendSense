@@ -5,6 +5,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { insertCorrection, createAccount, deleteMyAccount, insertIncome, insertPurchase, loadLedger, saveAllowanceChange, saveRelease } from '../../src/data/ledgerStore'
+import { accountCash } from '../../src/domain/ledger'
 import { signIn, type TestUser } from './clients.ts'
 
 const WEEK_1 = '2026-10-19'
@@ -63,7 +64,9 @@ async function fillAccount(client: SupabaseClient) {
     suggestedCents: null,
   })
   if (!change.ok) throw new Error(change.message)
-  const corrected = await insertCorrection(client, accountId, { id: crypto.randomUUID(), date: WEEK_2, differenceCents: -100 })
+  const current = await loadLedger(client, WEEK_2)
+  if (!current.ok) throw new Error(current.message)
+  const corrected = await insertCorrection(client, accountId, { id: crypto.randomUUID(), date: WEEK_2, differenceCents: -100 }, accountCash(current.loaded.ledger.accounts.USD!).currentCashCents)
   if (!corrected.ok) throw new Error(corrected.message)
   const release = await saveRelease(client, accountId, { id: crypto.randomUUID(), madeOn: WEEK_2, cents: 100 })
   if (!release.ok) throw new Error(release.message)

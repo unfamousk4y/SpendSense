@@ -41,6 +41,14 @@ async function createAccount(user: TestUser): Promise<string> {
     .select('id')
     .single()
   if (error) throw new Error(`Could not create a test account: ${error.message}`)
+  // Entries must be dated in a week that has a plan, as in the real app.
+  const plan = await user.client.from('week_plans').insert({
+    account_id: data.id,
+    week_start: MONDAY,
+    recommended_cents: 15000,
+    starting_allowance_cents: 15000,
+  })
+  if (plan.error) throw new Error(`Could not create a test week plan: ${plan.error.message}`)
   return data.id
 }
 
@@ -99,8 +107,8 @@ describe('each user sees only their own rows', () => {
 })
 
 describe("B cannot read A's plans, changes, closures or releases", () => {
-  // Weeks before MONDAY: the attacks below need A's MONDAY week plan to be free,
-  // and closing a week needs a date the database does not consider ahead of it.
+  // Weeks before MONDAY: closing a week needs a date the database does not
+  // consider ahead of it.
   const CLOSED_WEEK = '2026-10-19'
   const OPEN_WEEK = '2026-10-26'
 
@@ -138,20 +146,24 @@ describe("B cannot read A's plans, changes, closures or releases", () => {
     }
   })
 
-  // B has none of these rows, so anything B gets back belongs to someone else.
-  // A's count shows the row exists: an empty result for B is not an empty table.
+  // B owns only the week plan its own account was set up with, so anything more
+  // belongs to someone else. A's count shows the rows exist: an empty result for
+  // B is not an empty table.
   test.each([
-    ['week_plans', 2],
-    ['allowance_changes', 1],
-    ['week_closures', 1],
-    ['savings_releases', 1],
-  ])('%s', async (table, aRowCount) => {
+    ['week_plans', 3, 1],
+    ['allowance_changes', 1, 0],
+    ['week_closures', 1, 0],
+    ['savings_releases', 1, 0],
+  ])('%s', async (table, aRowCount, bRowCount) => {
     const asB = await b.client.from(table).select('id')
     expect(asB.error).toBeNull()
-    expect(asB.data).toEqual([])
+    expect(asB.data).toHaveLength(bRowCount)
 
     const asA = await a.client.from(table).select('id')
     expect(asA.data).toHaveLength(aRowCount)
+
+    const aIds = asA.data!.map((row) => row.id)
+    expect(asB.data!.filter((row) => aIds.includes(row.id))).toEqual([])
   })
 })
 
@@ -197,7 +209,8 @@ describe('B cannot forge ownership or links', () => {
 
   test("moving B's purchase into A's account is refused", async () => {
     const { error } = await b.client.from('purchases').update({ account_id: aAccountId }).eq('id', bPurchaseId)
-    expect(error?.code).toBe(FOREIGN_KEY)
+    // There is no right to change this column at all, so it stops before the foreign key.
+    expect(error?.code).toBe('42501')
   })
 
   test("handing B's account over to A is refused", async () => {
@@ -208,7 +221,8 @@ describe('B cannot forge ownership or links', () => {
   test("a week plan for A's account is refused", async () => {
     const { error } = await b.client.from('week_plans').insert({
       account_id: aAccountId,
-      week_start: MONDAY,
+      // A week A has no plan for yet, so only the ownership check can refuse it.
+      week_start: '2026-11-09',
       recommended_cents: 15000,
       starting_allowance_cents: 15000,
     })

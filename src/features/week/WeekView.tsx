@@ -1,5 +1,6 @@
 import { AnimatePresence } from 'motion/react';
 import { useState, type ReactNode } from 'react';
+import type { FormDraft } from '../../data/formDraft';
 import { allocateCash } from '../../domain/allocation';
 import { freeCashCents } from '../../domain/allowance';
 import { midweekSuggestion, remainingOverFreeCash, type AllowanceChange } from '../../domain/allowanceChange';
@@ -58,20 +59,22 @@ type WeekViewProps = {
   onReleaseSavings: (release: SavingsRelease) => Promise<SaveResult>;
   /** Present only on the fictional demo: move the date forward one day. */
   onNextDay?: () => void;
+  /** A form to reopen, filled in, because the session ended while saving it. */
+  restoredDraft?: FormDraft;
   /** Who is signed in and a way out, shown in the footer. */
   accountControls?: ReactNode;
 };
 
 /** Which form is open, if any. Editing carries the purchase being edited. */
 type DialogState =
-  | { mode: 'add' }
-  | { mode: 'edit'; purchase: Purchase }
-  | { mode: 'addIncome' }
-  | { mode: 'editIncome'; income: IncomeReceipt }
+  | { mode: 'add'; restored?: Purchase }
+  | { mode: 'edit'; purchase: Purchase; restored?: Purchase }
+  | { mode: 'addIncome'; restored?: IncomeReceipt }
+  | { mode: 'editIncome'; income: IncomeReceipt; restored?: IncomeReceipt }
   | { mode: 'correct' }
   | { mode: 'undoCorrection'; correction: BalanceCorrection }
-  | { mode: 'addBill' }
-  | { mode: 'editBill'; bill: Bill }
+  | { mode: 'addBill'; restored?: Bill }
+  | { mode: 'editBill'; bill: Bill; restored?: Bill }
   | { mode: 'payBill'; bill: Bill }
   | { mode: 'newPlan' }
   | { mode: 'allowance' }
@@ -105,6 +108,28 @@ const CURRENCIES: Currency[] = ['USD', 'BSD'];
 const label = (date: IsoDate, options: Intl.DateTimeFormatOptions) =>
   new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', { ...options, timeZone: 'UTC' });
 
+/** An entry being edited must still exist: another device may have deleted it. */
+function dialogForDraft(draft: FormDraft | undefined, account: WeekAccount): DialogState {
+  if (!draft) return null;
+  switch (draft.kind) {
+    case 'purchase': {
+      if (!draft.editing) return { mode: 'add', restored: draft.entry };
+      const purchase = account.purchases.find((saved) => saved.id === draft.entry.id);
+      return purchase ? { mode: 'edit', purchase, restored: draft.entry } : null;
+    }
+    case 'income': {
+      if (!draft.editing) return { mode: 'addIncome', restored: draft.entry };
+      const income = account.income.find((saved) => saved.id === draft.entry.id);
+      return income ? { mode: 'editIncome', income, restored: draft.entry } : null;
+    }
+    case 'bill': {
+      if (!draft.editing) return { mode: 'addBill', restored: draft.entry };
+      const bill = account.bills.find((saved) => saved.id === draft.entry.id);
+      return bill ? { mode: 'editBill', bill, restored: draft.entry } : null;
+    }
+  }
+}
+
 export function WeekView({
   account,
   today,
@@ -127,9 +152,10 @@ export function WeekView({
   onChangeAllowance,
   onReleaseSavings,
   onNextDay,
+  restoredDraft,
   accountControls,
 }: WeekViewProps) {
-  const [dialog, setDialog] = useState<DialogState>(null);
+  const [dialog, setDialog] = useState<DialogState>(() => dialogForDraft(restoredDraft, account));
   // Which cash panel is expanded into the focused view, if any.
   const [expandedFrom, setExpandedFrom] = useState<CashPanelId | null>(null);
   // The last change, for the confirmation line. Cleared when switching account.
@@ -347,6 +373,10 @@ export function WeekView({
     <CalculationBreakdown
       currency={currency}
       {...cashParts}
+      weekStartCashCents={account.weekStartCashCents}
+      incomeThisWeekCents={sumIncome(account.income)}
+      billPaymentsThisWeekCents={account.billPaymentsThisWeekCents}
+      correctionsThisWeekCents={sumCorrections(account.corrections)}
       freeCashCents={freeCents}
       planEndLabel={planEndLabel}
       recommendedAllowanceCents={account.recommendedAllowanceCents}
@@ -850,6 +880,7 @@ export function WeekView({
           currency={currency}
           dates={entryDates}
           existing={dialog.mode === 'editIncome' ? dialog.income : undefined}
+          restored={dialog.restored}
           currentCashCents={currentCashCents}
           freeCents={freeCents}
           spentCents={summary.spentCents}
@@ -866,6 +897,7 @@ export function WeekView({
           key={dialog.mode === 'editBill' ? dialog.bill.id : 'add'}
           currency={currency}
           existing={dialog.mode === 'editBill' ? dialog.bill : undefined}
+          restored={dialog.restored}
           planEndDate={account.planEndDate}
           planEndLabel={planEndLabel}
           commitmentsCents={account.commitmentsCents}
@@ -943,6 +975,7 @@ export function WeekView({
           currency={currency}
           dates={entryDates}
           existing={dialog.mode === 'edit' ? dialog.purchase : undefined}
+          restored={dialog.restored}
           onSave={handleSave}
           onDelete={handleDelete}
           onClose={() => setDialog(null)}

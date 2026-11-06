@@ -169,6 +169,8 @@ describe('closing a week sees bills as they were then', () => {
   })
 
   test('paid after the week ended: it still counted as unpaid for that week', async () => {
+    // The real order: a week's plan exists before anything can be dated in it.
+    await a.client.from('week_plans').insert({ account_id: accountId, week_start: WEEK_2, recommended_cents: 0, starting_allowance_cents: 0 })
     expect((await pay(a, bill, WEEK_2, 79000)).error).toBeNull()
     expect(weekAccount((await load(a, WEEK_2)).ledger, 'USD').protectedCents).toBe(20000 + 1000)
   })
@@ -322,7 +324,7 @@ describe('user B and signed-out visitors', () => {
   test("B cannot move their own bill into A's account", async () => {
     const own = await addBill(b, bAccountId, 100)
     const { error } = await b.client.from('bills').update({ account_id: accountId }).eq('id', own)
-    expect(error?.code).toBe('23503')
+    expect(error?.code).toBe('42501')
   })
 
   test('a signed-out visitor is refused', async () => {

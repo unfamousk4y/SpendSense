@@ -249,7 +249,7 @@ describe('user B and signed-out visitors', () => {
     const own = received()
     await insertIncome(b.client, bAccountId, own)
     const { error } = await b.client.from('income_receipts').update({ account_id: accountId }).eq('id', own.id)
-    expect(error?.code).toBe('23503')
+    expect(error?.code).toBe('42501')
   })
 
   test("reusing A's id is a failure, not a false success", async () => {

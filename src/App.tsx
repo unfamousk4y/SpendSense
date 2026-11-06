@@ -27,6 +27,7 @@ export default function App() {
         // A different student must never see the previous student's state.
         key={auth.session.user.id}
         client={supabase}
+        userId={auth.session.user.id}
         accountControls={<AccountControls client={supabase} email={auth.session.user.email ?? 'your Google account'} />}
       />
     );
@@ -37,6 +38,7 @@ export default function App() {
   return (
     <SignInScreen
       notConfigured={auth.status === 'notConfigured'}
+      sessionLost={auth.status === 'signedOut' && auth.sessionLost}
       onTryDemo={import.meta.env.DEV ? () => setDemoWithoutAccount(true) : undefined}
     />
   );
