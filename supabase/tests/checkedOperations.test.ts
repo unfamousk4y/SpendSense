@@ -49,7 +49,7 @@ async function load(user: TestUser, today: string) {
   return result.loaded
 }
 
-const spend = (date: string, cents: number): Purchase => ({ id: crypto.randomUUID(), date, merchant: 'Fictional', cents })
+const spend = (date: string, cents: number): Purchase => ({ id: crypto.randomUUID(), date, merchant: 'Fictional', needOrWant: 'need', cents })
 
 async function start(user: TestUser, account: NewAccount = usd): Promise<string> {
   const created = await createAccount(user.client, account)

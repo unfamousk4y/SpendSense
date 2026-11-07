@@ -55,7 +55,7 @@ async function createPurchase(user: TestUser, accountId: string, cents: number):
   const id = crypto.randomUUID()
   const { error } = await user.client
     .from('purchases')
-    .insert({ id, account_id: accountId, date: '2026-11-03', merchant: 'Fictional café', cents })
+    .insert({ id, account_id: accountId, date: '2026-11-03', merchant: 'Fictional café', need_or_want: 'want', cents })
   if (error) throw new Error(`Could not create a test purchase: ${error.message}`)
   return id
 }
@@ -194,6 +194,7 @@ describe('B cannot forge ownership or links', () => {
       user_id: a.userId,
       account_id: aAccountId,
       date: '2026-11-03',
+      need_or_want: 'need',
       cents: 100,
     })
     expect(error?.code).toBe(NOT_ALLOWED)
@@ -202,7 +203,7 @@ describe('B cannot forge ownership or links', () => {
   test("inserting B's own purchase into A's account is refused", async () => {
     const { error } = await b.client
       .from('purchases')
-      .insert({ id: crypto.randomUUID(), account_id: aAccountId, date: '2026-11-03', cents: 100 })
+      .insert({ id: crypto.randomUUID(), account_id: aAccountId, date: '2026-11-03', need_or_want: 'need', cents: 100 })
     expect(error?.code).toBe(FOREIGN_KEY)
   })
 
@@ -231,7 +232,7 @@ describe('B cannot forge ownership or links', () => {
   test("reusing A's purchase id is refused and does not reveal or touch A's row", async () => {
     const { error } = await b.client
       .from('purchases')
-      .insert({ id: aPurchaseId, account_id: bAccountId, date: '2026-11-03', cents: 100 })
+      .insert({ id: aPurchaseId, account_id: bAccountId, date: '2026-11-03', need_or_want: 'need', cents: 100 })
     expect(error).not.toBeNull()
     const check = await a.client.from('purchases').select('cents').eq('id', aPurchaseId).single()
     expect(check.data?.cents).toBe(450)
@@ -263,7 +264,7 @@ describe('the database rejects impossible values on its own', () => {
   test('a purchase of 0 cents', async () => {
     const { error } = await a.client
       .from('purchases')
-      .insert({ id: crypto.randomUUID(), account_id: aAccountId, date: '2026-11-03', cents: 0 })
+      .insert({ id: crypto.randomUUID(), account_id: aAccountId, date: '2026-11-03', need_or_want: 'need', cents: 0 })
     expect(error?.code).toBe(CHECK)
   })
 

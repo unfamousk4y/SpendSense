@@ -46,7 +46,7 @@ async function fillAccount(client: SupabaseClient) {
   if (!first.ok) throw new Error(first.message)
   const accountId = first.loaded.accountIds.USD!
   // Dated in week 1, which closes below: the purchase guard must still let it go.
-  const closedPurchase = await insertPurchase(client, accountId, { id: crypto.randomUUID(), date: WEEK_1, merchant: 'Fictional café', cents: 450 })
+  const closedPurchase = await insertPurchase(client, accountId, { id: crypto.randomUUID(), date: WEEK_1, merchant: 'Fictional café', needOrWant: 'want', cents: 450 })
   if (!closedPurchase.ok) throw new Error(closedPurchase.message)
   // Income in the same week: its guard must let it go too.
   const closedIncome = await insertIncome(client, accountId, { id: crypto.randomUUID(), date: WEEK_1, cents: 5000 })
@@ -54,7 +54,7 @@ async function fillAccount(client: SupabaseClient) {
 
   const second = await loadLedger(client, WEEK_2)
   if (!second.ok) throw new Error(second.message)
-  const openPurchase = await insertPurchase(client, accountId, { id: crypto.randomUUID(), date: WEEK_2, merchant: 'Fictional bookshop', cents: 725 })
+  const openPurchase = await insertPurchase(client, accountId, { id: crypto.randomUUID(), date: WEEK_2, merchant: 'Fictional bookshop', needOrWant: 'need', cents: 725 })
   if (!openPurchase.ok) throw new Error(openPurchase.message)
   const change = await saveAllowanceChange(client, second.loaded.weekPlanIds.USD![WEEK_2], {
     id: crypto.randomUUID(),

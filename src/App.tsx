@@ -77,6 +77,7 @@ function DemoWeek() {
               weekStart: mondayOf(ledger.today),
               recommendedCents: week.recommendedCents,
               startingAllowanceCents: week.allowanceCents,
+              wantsGuideCents: week.wantsGuideCents ?? 0,
               changes: [],
             },
           })

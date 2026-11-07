@@ -67,6 +67,7 @@ describe('exporting a student’s own data', () => {
         id: crypto.randomUUID(),
         date: WEEK_2,
         merchant: 'Fictional café',
+        needOrWant: 'want',
         cents,
       })
       if (!saved.ok) throw new Error(saved.message)
@@ -89,6 +90,7 @@ describe('exporting a student’s own data', () => {
       id: bPurchaseId,
       date: WEEK_1,
       merchant: 'Fictional bookshop',
+      needOrWant: 'need',
       cents: 999,
     })
     if (!bSaved.ok) throw new Error(bSaved.message)

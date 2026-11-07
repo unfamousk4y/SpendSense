@@ -13,8 +13,8 @@ type CashAllocationChartProps = {
 const LABELS: Record<AllocationKey, string> = {
   protected: 'Protected savings',
   bills: 'Reserved for bills',
-  thisWeek: 'Left to spend this week',
-  laterWeeks: 'Free for later weeks',
+  needs: 'Left for needs',
+  wants: 'Left for wants',
 };
 
 // Gap between slices, in hundredths of the ring.

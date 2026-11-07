@@ -14,6 +14,8 @@ type CalculationBreakdownProps = {
   protectedCents: number;
   commitmentsCents: number;
   freeCashCents: number;
+  /** The part of free cash left for wants; the rest is for needs. */
+  wantsLeftCents: number;
   planEndLabel: string;
   recommendedAllowanceCents: number;
   chosenAllowanceCents: number;
@@ -199,6 +201,18 @@ export function CalculationBreakdown(props: CalculationBreakdownProps) {
               <dd className={styles.total}>
                 <Money cents={props.freeCashCents} currency={currency} />
               </dd>
+              {props.freeCashCents >= 0 && (
+                <>
+                  <dt className={styles.detail}>Of that, left for wants</dt>
+                  <dd className={styles.detail}>
+                    <Money cents={props.wantsLeftCents} currency={currency} />
+                  </dd>
+                  <dt className={styles.detail}>Of that, left for needs</dt>
+                  <dd className={styles.detail}>
+                    <Money cents={props.freeCashCents - props.wantsLeftCents} currency={currency} />
+                  </dd>
+                </>
+              )}
             </dl>
 
             <dl className={styles.sum}>

@@ -1,7 +1,8 @@
 import { AnimatePresence } from 'motion/react';
 import { useState, type ReactNode } from 'react';
 import type { FormDraft } from '../../data/formDraft';
-import { allocateCash } from '../../domain/allocation';
+import { allocateCashBySplit } from '../../domain/allocation';
+import { spendingByCategory } from '../../domain/categoryBreakdown';
 import { freeCashCents } from '../../domain/allowance';
 import { midweekSuggestion, remainingOverFreeCash, type AllowanceChange } from '../../domain/allowanceChange';
 import { categoryLabel, purchaseTitle } from '../../domain/categories';
@@ -29,7 +30,7 @@ import { UndoCorrectionDialog } from './UndoCorrectionDialog';
 import { NewPlanDialog } from './NewPlanDialog';
 import { PayBillDialog } from './PayBillDialog';
 import { moneyFlow } from '../../domain/moneyFlow';
-import { SUGGESTED_SPLIT } from '../../domain/split';
+import { SUGGESTED_SPLIT, wantsStatus } from '../../domain/split';
 import { canStartNewPlan } from '../../domain/newPlan';
 import { CashPanel } from './CashPanel';
 import { MoneyFlow } from './MoneyFlow';
@@ -355,7 +356,12 @@ export function WeekView({
     onNextDay?.();
   }
 
-  const cashAllocation = allocateCash({ ...cashParts, weekRemainingCents: summary.remainingCents });
+  const cashAllocation = allocateCashBySplit({ ...cashParts, wantsLeftCents: account.wantsLeftCents });
+  const wants = wantsStatus({
+    savedGuideCents: account.wantsGuideCents,
+    allowanceCents: account.chosenAllowanceCents,
+    wantsSpentCents: spendingByCategory(account.purchases).wantCents,
+  });
 
   const breakdown = (
     <CalculationBreakdown
@@ -366,6 +372,7 @@ export function WeekView({
       billPaymentsThisWeekCents={account.billPaymentsThisWeekCents}
       correctionsThisWeekCents={sumCorrections(account.corrections)}
       freeCashCents={freeCents}
+      wantsLeftCents={account.wantsLeftCents}
       planEndLabel={planEndLabel}
       recommendedAllowanceCents={account.recommendedAllowanceCents}
       chosenAllowanceCents={account.chosenAllowanceCents}
@@ -447,6 +454,15 @@ export function WeekView({
             <p className={styles.subline}>
               of <Money cents={account.chosenAllowanceCents} currency={currency} /> allowance ·{' '}
               <Money cents={summary.spentCents} currency={currency} /> spent
+              <span className={styles.wantsLine}>
+                Up to <Money cents={wants.guideCents} currency={currency} /> of this for wants ·{' '}
+                <Money cents={spendingByCategory(account.purchases).wantCents} currency={currency} /> spent on wants
+              </span>
+              {wants.overCents > 0 && (
+                <strong className={styles.wantsOver}>
+                  <Money cents={wants.overCents} currency={currency} /> over your wants guide
+                </strong>
+              )}
             </p>
             <div className={styles.actionBar}>
               <button type="button" className={styles.addButton} onClick={() => setDialog({ mode: 'add' })}>
@@ -472,6 +488,11 @@ export function WeekView({
                 Adjust allowance
               </button>
             </div>
+          )}
+          {account.wantsCoveredElsewhereCents > 0 && freeCents >= 0 && (
+            <p className={styles.note}>
+              <Money cents={account.wantsCoveredElsewhereCents} currency={currency} /> of your wants share has gone to bills and needs.
+            </p>
           )}
           {account.chosenAllowanceCents !== account.recommendedAllowanceCents && (
             <p className={styles.note}>

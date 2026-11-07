@@ -104,7 +104,7 @@ export async function loadLedger(client: SupabaseClient, today: IsoDate): Promis
   if (!first.ok) return first;
 
   // An account may have reached a week it has no plan for yet.
-  const newPlans: { account_id: string; week_start: string; recommended_cents: number; starting_allowance_cents: number }[] = [];
+  const newPlans: { account_id: string; week_start: string; recommended_cents: number; starting_allowance_cents: number; wants_guide_cents: number }[] = [];
   for (const account of Object.values(first.loaded.ledger.accounts)) {
     const plan = account && planForNewWeek(account, today);
     const accountId = account && first.loaded.accountIds[account.currency];
@@ -114,6 +114,7 @@ export async function loadLedger(client: SupabaseClient, today: IsoDate): Promis
         week_start: plan.weekStart,
         recommended_cents: plan.recommendedCents,
         starting_allowance_cents: plan.startingAllowanceCents,
+        wants_guide_cents: plan.wantsGuideCents ?? 0,
       });
     }
   }

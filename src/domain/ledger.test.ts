@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { demoLedger } from '../fixtures/demoWeek';
-import { accountCash, hasEndedWeekToClose, ledgerReducer, planForNewWeek, weekAccount, type Ledger, type LedgerAction } from './ledger';
+import { accountCash, hasEndedWeekToClose, ledgerReducer, wantsGuideForNewPlan, planForNewWeek, weekAccount, type Ledger, type LedgerAction } from './ledger';
 
 // Expected values worked out by hand. The demo starts Thu Nov 5 in the week of
 // Nov 2 with USD 1,000 opening cash, 200 protected, 200 bills, allowance 150,
@@ -232,6 +232,8 @@ describe('planForNewWeek', () => {
       weekStart: '2026-11-09',
       recommendedCents: 18666,
       startingAllowanceCents: 18666,
+      // Wants left 235.50, with 7 of the 21 days this week.
+      wantsGuideCents: 7850,
       changes: [],
     });
   });
@@ -333,5 +335,65 @@ describe('ledger: income with a confirmed split', () => {
     expect(run(short, add())).toBe(short);
     const unsaved = run(short, add({ ...splitPayment, savingsCents: 0 }));
     expect(unsaved.accounts.USD!.income).toHaveLength(1);
+  });
+});
+
+// The demo's USD account on Thu Nov 5: F = 560, wants pool 240, 4.50 spent on wants, guide 60.
+describe('ledger: wants', () => {
+  const want = (id: string, cents: number, date = '2026-11-05'): LedgerAction => ({
+    type: 'addPurchase',
+    currency: 'USD',
+    purchase: { id, date, merchant: 'Fictional', needOrWant: 'want', cents },
+  });
+  const need = (id: string, cents: number): LedgerAction => ({
+    type: 'addPurchase',
+    currency: 'USD',
+    purchase: { id, date: '2026-11-05', merchant: 'Fictional', needOrWant: 'need', cents },
+  });
+
+  test('wants left: the 240 pool less the 4.50 already spent', () => {
+    expect(weekAccount(demoLedger, 'USD')).toMatchObject({ wantsGuideCents: 6000, wantsLeftCents: 23550, wantsCoveredElsewhereCents: 0 });
+  });
+
+  test('a want lowers wants left, but the guide stays where it was', () => {
+    expect(weekAccount(run(demoLedger, want('w', 1000)), 'USD')).toMatchObject({ wantsGuideCents: 6000, wantsLeftCents: 22550 });
+  });
+
+  test('a need leaves wants alone while the cash can still cover them', () => {
+    expect(weekAccount(run(demoLedger, need('n', 1000)), 'USD')).toMatchObject({ wantsLeftCents: 23550, wantsCoveredElsewhereCents: 0 });
+  });
+
+  test('needs that eat into the cash behind wants are reported, not hidden', () => {
+    // F = 560 - 400 = 160, which is 75.50 less than the 235.50 of wants.
+    expect(weekAccount(run(demoLedger, need('n', 40000)), 'USD')).toMatchObject({ wantsLeftCents: 16000, wantsCoveredElsewhereCents: 7550 });
+  });
+
+  test('wants from income this week raise the guide by the share of days left', () => {
+    // Thu Nov 5 through Sun Nov 29 is 25 days, 4 of them this week: 30 * 4 / 25 = 4.80.
+    const after = run(demoLedger, {
+      type: 'addIncome',
+      currency: 'USD',
+      income: { id: 'pay', date: '2026-11-05', cents: 10000, savingsCents: 2000, wantsCents: 3000 },
+    });
+    expect(weekAccount(after, 'USD')).toMatchObject({ wantsGuideCents: 6480, wantsLeftCents: 26550 });
+  });
+
+  test('closing a week moves the unused guide to savings, and the next guide is smaller', () => {
+    // Allowance 150, spent 40, so 110 is protected. Guide 60 less 4.50 spent: 55.50 moves.
+    // Wants left 235.50 - 55.50 = 180. Nov 9 through Nov 29 is 21 days, 7 this week: 60.
+    const after = run(demoLedger, ...toMonday);
+    expect(weekAccount(after, 'USD')).toMatchObject({ wantsLeftCents: 18000, wantsGuideCents: 6000 });
+  });
+
+  test('an overspent week moves nothing', () => {
+    // Spending 150 more on wants makes it 190 of 150: nothing protected, nothing moved.
+    const after = run(demoLedger, want('w', 15000), ...toMonday);
+    expect(after.accounts.USD!.closures[0]).toMatchObject({ protectedCents: 0 });
+    expect(weekAccount(after, 'USD')).toMatchObject({ wantsLeftCents: 8550 });
+  });
+
+  test('a new plan works out its first guide from the new end date', () => {
+    // Wants left 235.50. Nov 5 through Dec 2 is 28 days, 4 this week: 33.64.
+    expect(wantsGuideForNewPlan(demoLedger.accounts.USD!, '2026-11-05', '2026-12-02')).toBe(3364);
   });
 });

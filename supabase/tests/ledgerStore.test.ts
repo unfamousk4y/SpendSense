@@ -194,7 +194,7 @@ describe('saving purchases', () => {
   test('an edit changes the row and keeps the id; clearing the note clears it', async () => {
     const purchase = coffee()
     await insertPurchase(a.client, accountId, purchase)
-    const edited: Purchase = { id: purchase.id, date: TODAY, merchant: 'Bookstore', category: 'school', cents: 2800 }
+    const edited: Purchase = { id: purchase.id, date: TODAY, merchant: 'Bookstore', category: 'school', needOrWant: 'need', cents: 2800 }
     expect(await updatePurchaseRow(a.client, edited)).toEqual({ ok: true })
     expect(weekAccount((await load(a)).ledger, 'USD').purchases).toEqual([edited])
     await deletePurchaseRow(a.client, purchase.id)
@@ -227,7 +227,7 @@ describe('saving purchases', () => {
   // The hosted database returns a limited number of rows per request. Stopping
   // there would quietly leave purchases out of the money the screen shows.
   test('every purchase counts past one page of rows: 1,005 purchases of 1 cent', async () => {
-    const rows = Array.from({ length: 1005 }, () => ({ id: crypto.randomUUID(), account_id: accountId, date: TODAY, cents: 1 }))
+    const rows = Array.from({ length: 1005 }, () => ({ id: crypto.randomUUID(), account_id: accountId, date: TODAY, need_or_want: 'want', cents: 1 }))
     const { error } = await a.client.from('purchases').insert(rows)
     expect(error).toBeNull()
 

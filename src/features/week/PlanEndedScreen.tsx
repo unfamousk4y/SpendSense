@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { SaveResult } from '../../data/ledgerStore';
 import type { IsoDate } from '../../domain/dates';
-import { accountCash, type AccountLedger } from '../../domain/ledger';
+import { accountCash, type AccountLedger, wantsGuideForNewPlan } from '../../domain/ledger';
 import type { Currency } from '../../domain/money';
 import { NewPlanForm, type NewPlanWeek } from './NewPlanForm';
 import styles from './PlanEndedScreen.module.css';
@@ -45,7 +45,7 @@ export function PlanEndedScreen({ account, today, onCurrencyChange, onStart, acc
         {...accountCash(account)}
         bills={account.bills}
         spentCents={0}
-        onStart={onStart}
+        onStart={(endDate, week) => onStart(endDate, week && { ...week, wantsGuideCents: wantsGuideForNewPlan(account, today, endDate) })}
       />
       {accountControls}
     </main>

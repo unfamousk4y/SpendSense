@@ -1,6 +1,7 @@
 // FICTIONAL DEMO DATA for the representative screen. Not saved anywhere and not
 // a real person's spending. Replace with persisted data once authentication and
 // ownership checks exist.
+import { SUGGESTED_SPLIT } from '../domain/split';
 import type { Bill } from '../domain/bills';
 import type { IsoDate } from '../domain/dates';
 import type { Currency } from '../domain/money';
@@ -22,6 +23,8 @@ export type DemoAccount = {
   /** Snapshot taken at the start of the week. */
   recommendedAllowanceCents: number;
   chosenAllowanceCents: number;
+  openingWantsCents: number;
+  wantsGuideCents: number;
   purchases: Purchase[];
 };
 
@@ -42,6 +45,9 @@ export const demoAccounts: Record<Currency, DemoAccount> = {
     planEndDate: '2026-11-29',
     recommendedAllowanceCents: 15000,
     chosenAllowanceCents: 15000,
+    // 30% of the 800 not already saved, and 7 of its 28 days.
+    openingWantsCents: 24000,
+    wantsGuideCents: 6000,
     purchases: [
       { id: 'usd-1', date: '2026-11-03', merchant: 'Campus café', category: 'food', needOrWant: 'want', cents: 450 },
       {
@@ -66,6 +72,9 @@ export const demoAccounts: Record<Currency, DemoAccount> = {
     planEndDate: '2026-11-29',
     recommendedAllowanceCents: 4387,
     chosenAllowanceCents: 4500,
+    // 30% of the 295.50 not already saved, and 7 of its 28 days.
+    openingWantsCents: 8865,
+    wantsGuideCents: 2216,
     purchases: [
       { id: 'bsd-1', date: '2026-11-02', merchant: 'Fish fry lunch', category: 'food', needOrWant: 'want', cents: 1200 },
       { id: 'bsd-2', date: '2026-11-04', merchant: 'Pharmacy', category: 'personalCare', needOrWant: 'need', cents: 1350 },
@@ -91,6 +100,8 @@ function toLedgerAccount(account: DemoAccount): AccountLedger {
     openingDate: DEMO_WEEK_START,
     openingCashCents: account.weekStartCashCents,
     openingProtectedCents: account.protectedCents,
+    split: SUGGESTED_SPLIT,
+    openingWantsCents: account.openingWantsCents,
     bills: account.bills,
     planEndDate: account.planEndDate,
     weeks: [
@@ -98,6 +109,7 @@ function toLedgerAccount(account: DemoAccount): AccountLedger {
         weekStart: DEMO_WEEK_START,
         recommendedCents: account.recommendedAllowanceCents,
         startingAllowanceCents: account.chosenAllowanceCents,
+        wantsGuideCents: account.wantsGuideCents,
         changes: [],
       },
     ],

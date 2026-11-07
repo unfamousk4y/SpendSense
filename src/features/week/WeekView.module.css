@@ -254,6 +254,17 @@
   font-size: 0.9375rem;
 }
 
+.wantsLine,
+.wantsOver {
+  display: block;
+  margin-top: 4px;
+}
+
+.wantsOver {
+  color: var(--red);
+  font-weight: 650;
+}
+
 /* The plan's end date has arrived: everything still works, with a way forward. */
 .planEnding {
   padding-left: 12px;

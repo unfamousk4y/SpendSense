@@ -37,7 +37,7 @@ import {
 import type { Currency } from './money';
 import { canStartNewPlan } from './newPlan';
 import { previewRelease, recordRelease, type SavingsRelease } from './release';
-import type { Split } from './split';
+import { wantsLeft, wantsMovedToSavings, weeklyWantsGuide, type Split, type WantsLeft } from './split';
 import { addPurchaseOnce, removePurchase, updatePurchase, type Purchase } from './week';
 
 /** The allowance snapshot for one week, plus any explained changes to it. */
@@ -127,6 +127,12 @@ export type WeekAccount = {
   planEndDate: IsoDate;
   /** The default for new payments. Absent on an account made before splits. */
   split: Split | undefined;
+  /** This week's wants guide, before it is limited to the allowance in force. */
+  wantsGuideCents: number;
+  /** What is left for wants across the rest of the plan. */
+  wantsLeftCents: number;
+  /** Wants money the cash cannot back, because bills or needs took it. */
+  wantsCoveredElsewhereCents: number;
   recommendedAllowanceCents: number;
   chosenAllowanceCents: number;
   allowanceChanges: AllowanceChange[];
@@ -387,6 +393,10 @@ function rollOver(account: AccountLedger, endedWeek: IsoDate, newWeek: IsoDate):
             weekStart: newWeek,
             recommendedCents: suggestion.suggestedCents,
             startingAllowanceCents: suggestion.suggestedCents,
+            wantsGuideCents: weeklyWantsGuide({
+              wantsLeftCents: accountWants(account, closures).wantsLeftCents,
+              ...planDays(newWeek, account.planEndDate),
+            }),
             changes: [],
           },
         ]
@@ -405,6 +415,7 @@ export function weekAccount(state: Ledger, currency: Currency): WeekAccount {
     // advanceDay always starts a plan before the plan end, so this is a bug.
     throw new Error(`No ${currency} plan for the week of ${weekStart}`);
   }
+  const wants = accountWants(account, account.closures);
   return {
     currency,
     weekStart,
@@ -421,6 +432,9 @@ export function weekAccount(state: Ledger, currency: Currency): WeekAccount {
     openingDate: account.openingDate,
     planEndDate: account.planEndDate,
     split: account.split,
+    wantsGuideCents: wantsGuideForWeek(account, plan),
+    wantsLeftCents: wants.wantsLeftCents,
+    wantsCoveredElsewhereCents: wants.coveredElsewhereCents,
     recommendedAllowanceCents: plan.recommendedCents,
     chosenAllowanceCents: currentAllowanceCents(plan.startingAllowanceCents, plan.changes),
     allowanceChanges: plan.changes,
@@ -460,8 +474,63 @@ export function planForNewWeek(account: AccountLedger, today: IsoDate): WeekPlan
     weekStart: mondayOf(today),
     recommendedCents: suggestion.suggestedCents,
     startingAllowanceCents: suggestion.suggestedCents,
+    wantsGuideCents: weeklyWantsGuide({
+      wantsLeftCents: accountWants(account, account.closures).wantsLeftCents,
+      ...planDays(today, account.planEndDate),
+    }),
     changes: [],
   };
+}
+
+/** The first wants guide under a new end date, since bills and days left both depend on it. */
+export function wantsGuideForNewPlan(account: AccountLedger, today: IsoDate, endDate: IsoDate): number {
+  const moved = { ...account, planEndDate: endDate };
+  return weeklyWantsGuide({
+    wantsLeftCents: accountWants(moved, moved.closures).wantsLeftCents,
+    ...planDays(today, endDate),
+  });
+}
+
+/**
+ * A week's wants guide: the amount saved when it started, plus a share of any
+ * wants money that arrived during it. Each payment's share is fixed by its own
+ * date, so the guide rises with new money and never shifts after a purchase.
+ */
+function wantsGuideForWeek(account: AccountLedger, plan: WeekPlan): number {
+  const fromIncome = account.income
+    .filter((receipt) => mondayOf(receipt.date) === plan.weekStart)
+    .reduce(
+      (total, receipt) =>
+        total + weeklyWantsGuide({ wantsLeftCents: receipt.wantsCents ?? 0, ...planDays(receipt.date, account.planEndDate) }),
+      0,
+    );
+  return (plan.wantsGuideCents ?? 0) + fromIncome;
+}
+
+function wantsSpentCents(purchases: Purchase[]): number {
+  return sumCents(purchases.filter((purchase) => purchase.needOrWant === 'want'));
+}
+
+function accountWants(account: AccountLedger, closures: WeekClosure[]): WantsLeft {
+  const poolFromIncome = account.income.reduce((total, receipt) => total + (receipt.wantsCents ?? 0), 0);
+  const movedToSavingsCents = closures.reduce((total, closure) => {
+    const plan = account.weeks.find((week) => week.weekStart === closure.weekStart);
+    if (!plan) return total;
+    return (
+      total +
+      wantsMovedToSavings({
+        protectedByClosureCents: closure.protectedCents,
+        guideCents: Math.min(wantsGuideForWeek(account, plan), closure.allowanceCents),
+        wantsSpentCents: wantsSpentCents(account.purchases.filter((purchase) => mondayOf(purchase.date) === closure.weekStart)),
+      })
+    );
+  }, 0);
+  return wantsLeft({
+    wantsPoolCents: (account.openingWantsCents ?? 0) + poolFromIncome,
+    wantsSpentCents: wantsSpentCents(account.purchases),
+    movedToSavingsCents,
+    freeCents: freeCashCents(cashParts(account, closures)),
+  });
 }
 
 function presentAccounts(state: Ledger): AccountLedger[] {

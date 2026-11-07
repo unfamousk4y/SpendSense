@@ -270,7 +270,7 @@ describe('savings during a shortfall', () => {
 
   test('an old payment can still be edited when its savings do not grow', async () => {
     const { id } = await insertIncome(a, accountId, { cents: 15000, savings_cents: 5000, wants_cents: 0 })
-    await a.client.from('purchases').insert({ id: crypto.randomUUID(), account_id: accountId, date: WEEK_1, cents: 10000 })
+    await a.client.from('purchases').insert({ id: crypto.randomUUID(), account_id: accountId, date: WEEK_1, need_or_want: 'need', cents: 10000 })
     expect((await a.client.from('income_receipts').update({ source: 'Tutoring' }).eq('id', id)).error).toBeNull()
     expect((await a.client.from('income_receipts').update({ savings_cents: 5001 }).eq('id', id)).error?.code).toBe('SS010')
   })
@@ -384,5 +384,33 @@ describe('through the real data layer', () => {
       ok: false,
       message: 'Some of the savings from this payment have already been released, so it cannot be changed that way. Reload the page to see the latest.',
     })
+  })
+})
+
+describe('need or want on a purchase', () => {
+  let accountId: string
+  const row = () => ({ id: crypto.randomUUID(), account_id: accountId, date: WEEK_1, need_or_want: 'want', cents: 100 })
+
+  beforeEach(async () => {
+    accountId = await start(a)
+  })
+
+  test('a purchase without one is refused', async () => {
+    const { error } = await a.client.from('purchases').insert({ ...row(), need_or_want: null })
+    expect(error).not.toBeNull()
+  })
+
+  test('it cannot be cleared on a saved purchase', async () => {
+    const purchase = row()
+    await a.client.from('purchases').insert(purchase)
+    const { error } = await a.client.from('purchases').update({ need_or_want: null }).eq('id', purchase.id)
+    expect(error).not.toBeNull()
+  })
+
+  test('it can be changed, and only to need or want', async () => {
+    const purchase = row()
+    await a.client.from('purchases').insert(purchase)
+    expect((await a.client.from('purchases').update({ need_or_want: 'need' }).eq('id', purchase.id)).error).toBeNull()
+    expect((await a.client.from('purchases').update({ need_or_want: 'maybe' }).eq('id', purchase.id)).error).not.toBeNull()
   })
 })

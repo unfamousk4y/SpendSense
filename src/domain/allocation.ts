@@ -1,7 +1,8 @@
-// Where one account's current cash is right now, split into four parts that
-// always add up to current cash: C = protected + bills + this week + later weeks.
+// Where one account's current cash is right now, seen through the student's
+// split. Four parts that always add up to current cash:
+// C = protected + bills + needs + wants.
 
-export type AllocationKey = 'protected' | 'bills' | 'thisWeek' | 'laterWeeks';
+export type AllocationKey = 'protected' | 'bills' | 'needs' | 'wants';
 
 export type AllocationSegment = {
   key: AllocationKey;
@@ -15,55 +16,6 @@ export type CashAllocation =
   /** Protected savings and bills exceed cash: there is no honest way to draw this as parts. */
   | { kind: 'shortfall'; shortfallCents: number };
 
-export function allocateCash({
-  currentCashCents,
-  protectedCents,
-  commitmentsCents,
-  weekRemainingCents,
-}: {
-  currentCashCents: number;
-  protectedCents: number;
-  commitmentsCents: number;
-  /** Chosen allowance minus spending this week; negative when overspent. */
-  weekRemainingCents: number;
-}): CashAllocation {
-  const freeCents = currentCashCents - protectedCents - commitmentsCents;
-  if (freeCents < 0) {
-    return { kind: 'shortfall', shortfallCents: -freeCents };
-  }
-
-  // Overspending leaves nothing for this week. If the allowance is larger than
-  // the free cash that actually exists, only the existing cash can be shown.
-  const thisWeekCents = Math.min(Math.max(weekRemainingCents, 0), freeCents);
-  const parts: [AllocationKey, number][] = [
-    ['protected', protectedCents],
-    ['bills', commitmentsCents],
-    ['thisWeek', thisWeekCents],
-    ['laterWeeks', freeCents - thisWeekCents],
-  ];
-
-  const percents = wholePercentsSummingTo100(parts.map(([, cents]) => cents), currentCashCents);
-  return {
-    kind: 'ok',
-    totalCents: currentCashCents,
-    segments: parts.map(([key, cents], i) => ({ key, cents, percent: percents[i] })),
-  };
-}
-
-export type SplitAllocationKey = 'protected' | 'bills' | 'needs' | 'wants';
-
-export type SplitAllocationSegment = {
-  key: SplitAllocationKey;
-  cents: number;
-  /** Whole percent of current cash; all four always sum to exactly 100 (or all 0). */
-  percent: number;
-};
-
-export type SplitCashAllocation =
-  | { kind: 'ok'; totalCents: number; segments: SplitAllocationSegment[] }
-  | { kind: 'shortfall'; shortfallCents: number };
-
-/** The same cash, seen through the student's split: C = protected + bills + needs + wants. */
 export function allocateCashBySplit({
   currentCashCents,
   protectedCents,
@@ -75,14 +27,15 @@ export function allocateCashBySplit({
   commitmentsCents: number;
   /** From wantsLeft in split.ts. */
   wantsLeftCents: number;
-}): SplitCashAllocation {
+}): CashAllocation {
   const freeCents = currentCashCents - protectedCents - commitmentsCents;
   if (freeCents < 0) {
     return { kind: 'shortfall', shortfallCents: -freeCents };
   }
 
+  // Needs are whatever remains, so the four parts always add up to the cash.
   const wantsCents = Math.min(Math.max(wantsLeftCents, 0), freeCents);
-  const parts: [SplitAllocationKey, number][] = [
+  const parts: [AllocationKey, number][] = [
     ['protected', protectedCents],
     ['bills', commitmentsCents],
     ['needs', freeCents - wantsCents],

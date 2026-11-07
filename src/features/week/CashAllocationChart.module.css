@@ -59,12 +59,12 @@
   --part: var(--neutral-part);
 }
 
-.thisWeek {
-  --part: var(--accent);
+.needs {
+  --part: var(--accent-soft);
 }
 
-.laterWeeks {
-  --part: var(--accent-soft);
+.wants {
+  --part: var(--accent);
 }
 
 .slice {

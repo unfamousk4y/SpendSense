@@ -67,7 +67,7 @@ describe('a save racing the week closing', () => {
     for (let round = 0; round < ROUNDS; round++) {
       const accountId = await start(a)
       const [saved, closed] = await Promise.all([
-        insertPurchase(a.client, accountId, { id: crypto.randomUUID(), date: WEEK_1, merchant: 'Fictional', cents: 300 }),
+        insertPurchase(a.client, accountId, { id: crypto.randomUUID(), date: WEEK_1, merchant: 'Fictional', needOrWant: 'need', cents: 300 }),
         close(a, accountId),
       ])
       expect(closed.error).toBeNull()
@@ -115,7 +115,7 @@ describe('entries must be dated in a week with a plan', () => {
   })
 
   test('a purchase, income, payment and correction are all refused', async () => {
-    const purchase = await a.client.from('purchases').insert({ id: crypto.randomUUID(), account_id: accountId, date: NO_PLAN, cents: 100 })
+    const purchase = await a.client.from('purchases').insert({ id: crypto.randomUUID(), account_id: accountId, date: NO_PLAN, need_or_want: 'need', cents: 100 })
     expect(purchase.error?.code).toBe(CLOSED)
     const income = await a.client.from('income_receipts').insert({ id: crypto.randomUUID(), account_id: accountId, received_on: NO_PLAN, cents: 100 })
     expect(income.error?.code).toBe(CLOSED)
@@ -129,7 +129,7 @@ describe('entries must be dated in a week with a plan', () => {
 
   test('moving a purchase into a week with no plan is refused', async () => {
     const id = crypto.randomUUID()
-    await a.client.from('purchases').insert({ id, account_id: accountId, date: WEEK_1, cents: 100 })
+    await a.client.from('purchases').insert({ id, account_id: accountId, date: WEEK_1, need_or_want: 'need', cents: 100 })
     expect((await a.client.from('purchases').update({ date: NO_PLAN }).eq('id', id)).error?.code).toBe(CLOSED)
   })
 
@@ -154,7 +154,7 @@ describe('an entry cannot change account or currency', () => {
     const purchase = crypto.randomUUID()
     const income = crypto.randomUUID()
     const bill = crypto.randomUUID()
-    await a.client.from('purchases').insert({ id: purchase, account_id: usdId, date: WEEK_1, cents: 100 })
+    await a.client.from('purchases').insert({ id: purchase, account_id: usdId, date: WEEK_1, need_or_want: 'need', cents: 100 })
     await a.client.from('income_receipts').insert({ id: income, account_id: usdId, received_on: WEEK_1, cents: 100 })
     await a.client.from('bills').insert({ id: bill, account_id: usdId, name: 'Fictional', due_on: WEEK_1, cents: 100 })
 
@@ -168,13 +168,13 @@ describe('an entry cannot change account or currency', () => {
 
   test('the owner column cannot be changed either', async () => {
     const id = crypto.randomUUID()
-    await a.client.from('purchases').insert({ id, account_id: usdId, date: WEEK_1, cents: 100 })
+    await a.client.from('purchases').insert({ id, account_id: usdId, date: WEEK_1, need_or_want: 'need', cents: 100 })
     expect((await a.client.from('purchases').update({ user_id: b.userId }).eq('id', id)).error?.code).toBe(NO_RIGHT)
   })
 
   test('the ordinary edits still work', async () => {
     const purchase = crypto.randomUUID()
-    await a.client.from('purchases').insert({ id: purchase, account_id: usdId, date: WEEK_1, cents: 100 })
+    await a.client.from('purchases').insert({ id: purchase, account_id: usdId, date: WEEK_1, need_or_want: 'need', cents: 100 })
     expect((await a.client.from('purchases').update({ cents: 200, merchant: 'Fictional', note: 'n', category: 'food', need_or_want: 'need', date: WEEK_1 }).eq('id', purchase)).error).toBeNull()
   })
 })
@@ -217,7 +217,7 @@ describe('a correction worked out from stale cash', () => {
   })
 
   test('a purchase saved in another tab makes the form refuse', async () => {
-    await insertPurchase(a.client, accountId, { id: crypto.randomUUID(), date: WEEK_1, merchant: 'Fictional', cents: 100 })
+    await insertPurchase(a.client, accountId, { id: crypto.randomUUID(), date: WEEK_1, merchant: 'Fictional', needOrWant: 'need', cents: 100 })
     expect(await insertCorrection(a.client, accountId, lower(), 96000)).toEqual({ ok: false, message: STALE })
   })
 
@@ -250,7 +250,7 @@ describe('a session the database no longer accepts', () => {
       auth: { persistSession: false, autoRefreshToken: false },
       global: { headers: { Authorization: 'Bearer not-a-real-token' } },
     })
-    const result = await insertPurchase(stale, crypto.randomUUID(), { id: crypto.randomUUID(), date: WEEK_1, merchant: 'Fictional', cents: 100 })
+    const result = await insertPurchase(stale, crypto.randomUUID(), { id: crypto.randomUUID(), date: WEEK_1, merchant: 'Fictional', needOrWant: 'need', cents: 100 })
     expect(result).toEqual({ ok: false, message: 'Your sign-in has expired. Sign in again to save this.' })
   })
 })

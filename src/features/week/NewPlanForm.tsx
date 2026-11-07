@@ -11,7 +11,7 @@ import { Money } from '../../ui/Money';
 import formStyles from './PurchaseDialog.module.css';
 import styles from './AdjustAllowanceDialog.module.css';
 
-export type NewPlanWeek = { recommendedCents: number; allowanceCents: number };
+export type NewPlanWeek = { recommendedCents: number; allowanceCents: number; wantsGuideCents?: number };
 
 type NewPlanFormProps = {
   currency: Currency;

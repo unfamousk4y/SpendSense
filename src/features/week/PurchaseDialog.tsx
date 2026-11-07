@@ -55,6 +55,7 @@ export function PurchaseDialog({ currency, dates, existing, restored, onSave, on
   const [note, setNote] = useState(start?.note ?? '');
   const [date, setDate] = useState(startingDate(start, dates));
   const [amountError, setAmountError] = useState<AmountInvalidReason | null>(null);
+  const [showNeedOrWantProblem, setShowNeedOrWantProblem] = useState(false);
   // Delete asks first, inside the form, so one mis-tap cannot remove a purchase.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   // While a save is on its way the form stays open and cannot be sent again. If
@@ -107,6 +108,10 @@ export function PurchaseDialog({ currency, dates, existing, restored, onSave, on
       amountRef.current?.focus();
       return;
     }
+    if (needOrWant === null) {
+      setShowNeedOrWantProblem(true);
+      return;
+    }
     void run(() =>
       onSave({
         id: entryId,
@@ -114,7 +119,7 @@ export function PurchaseDialog({ currency, dates, existing, restored, onSave, on
         merchant: merchant.trim(),
         ...(note.trim() && { note: note.trim() }),
         ...(category && { category }),
-        ...(needOrWant && { needOrWant }),
+        needOrWant,
         cents: result.cents,
       }),
     );
@@ -198,9 +203,7 @@ export function PurchaseDialog({ currency, dates, existing, restored, onSave, on
         </fieldset>
 
         <fieldset className={styles.group}>
-          <legend className={styles.label}>
-            Need or want <span className={styles.optional}>optional</span>
-          </legend>
+          <legend className={styles.label}>Need or want</legend>
           <div className={styles.segmented}>
             {(['need', 'want'] as const).map((option) => (
               <button
@@ -208,12 +211,16 @@ export function PurchaseDialog({ currency, dates, existing, restored, onSave, on
                 type="button"
                 className={styles.segment}
                 aria-pressed={needOrWant === option}
-                onClick={() => setNeedOrWant(needOrWant === option ? null : option)}
+                onClick={() => {
+                  setNeedOrWant(option);
+                  setShowNeedOrWantProblem(false);
+                }}
               >
                 {option === 'need' ? 'Need' : 'Want'}
               </button>
             ))}
           </div>
+          {showNeedOrWantProblem && <span className={styles.error}>Choose Need or Want. It keeps your wants guide accurate.</span>}
         </fieldset>
 
         <label className={styles.field}>
