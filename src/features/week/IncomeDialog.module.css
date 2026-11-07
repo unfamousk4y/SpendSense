@@ -1,0 +1,30 @@
+.sharesTitle {
+  margin: 0 0 -8px;
+  font-size: 0.875rem;
+}
+
+.shares {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 16px;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.shares dt,
+.shares dd {
+  margin: 0;
+}
+
+.shares dd {
+  font-weight: 650;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.warning {
+  margin: 0;
+  color: var(--amber-ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+}

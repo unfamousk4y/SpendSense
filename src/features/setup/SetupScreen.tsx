@@ -2,9 +2,11 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import { parseAmount, centsOrZero } from '../../domain/amount';
 import type { IsoDate } from '../../domain/dates';
 import { formatCents, type Currency } from '../../domain/money';
-import { firstAllowanceFits, previewSetup } from '../../domain/setup';
+import { firstAllowanceFits, previewSetupWithSplit } from '../../domain/setup';
+import { SUGGESTED_SPLIT_TEXTS, readSplitTexts } from '../../domain/split';
 import type { NewAccount, SaveResult } from '../../data/ledgerStore';
 import { Money } from '../../ui/Money';
+import { SplitFields } from '../../ui/SplitFields';
 import { ThemeSwitch } from '../../ui/ThemeSwitch';
 // Same labels and amount boxes as the purchase form.
 import formStyles from '../week/PurchaseDialog.module.css';
@@ -29,6 +31,7 @@ export function SetupScreen({ currency, today, onCurrencyChange, onCreate, accou
   const [billsText, setBillsText] = useState('');
   const [planEndDate, setPlanEndDate] = useState('');
   const [allowanceText, setAllowanceText] = useState('');
+  const [splitTexts, setSplitTexts] = useState(SUGGESTED_SPLIT_TEXTS);
   const [showProblems, setShowProblems] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -40,9 +43,10 @@ export function SetupScreen({ currency, today, onCurrencyChange, onCreate, accou
   // A date box reports each stage of typing a year (0002, 0020, 0202, 2026), so
   // a year starting with 0 means the student has not finished typing it.
   const endDateEntered = planEndDate !== '' && !planEndDate.startsWith('0');
+  const { split } = readSplitTexts(splitTexts);
   const preview =
-    cashCents !== null && protectedCents !== null && commitmentsCents !== null && endDateEntered
-      ? previewSetup({ today, cashCents, protectedCents, commitmentsCents, planEndDate })
+    cashCents !== null && protectedCents !== null && commitmentsCents !== null && endDateEntered && split !== null
+      ? previewSetupWithSplit({ today, cashCents, alreadySavedCents: protectedCents, commitmentsCents, planEndDate, split })
       : null;
   const chosenCents = preview?.kind === 'ok' && allowanceText.trim() !== '' ? centsOrZero(parseAmount(allowanceText)) : undefined;
   const allowanceCents = preview?.kind === 'ok' ? (chosenCents === undefined ? preview.suggestedCents : chosenCents) : null;
@@ -52,7 +56,7 @@ export function SetupScreen({ currency, today, onCurrencyChange, onCreate, accou
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving) return;
-    if (cashCents === null || protectedCents === null || commitmentsCents === null || preview?.kind !== 'ok' || allowanceCents === null || !allowanceFits) {
+    if (cashCents === null || protectedCents === null || commitmentsCents === null || split === null || preview?.kind !== 'ok' || allowanceCents === null || !allowanceFits) {
       setShowProblems(true);
       return;
     }
@@ -62,11 +66,15 @@ export function SetupScreen({ currency, today, onCurrencyChange, onCreate, accou
       currency,
       openingDate: today,
       cashCents,
-      protectedCents,
+      // The savings already held plus the savings share of the split.
+      protectedCents: preview.protectedCents,
       commitmentsCents,
       planEndDate,
       recommendedCents: preview.suggestedCents,
       allowanceCents,
+      split,
+      openingWantsCents: preview.wantsCents,
+      wantsGuideCents: preview.wantsGuideCents,
     });
     // On success the app reloads the account and this screen goes away.
     if (!saved.ok) {
@@ -135,11 +143,11 @@ export function SetupScreen({ currency, today, onCurrencyChange, onCreate, accou
           invalid: showProblems && cashCents === null,
           message: cashText.trim() === '' ? 'Enter your current cash, or 0.' : AMOUNT_HELP,
         })}
-        {amountField('Protected savings', protectedText, setProtectedText, {
+        {amountField('Savings you already have', protectedText, setProtectedText, {
           optional: true,
           invalid: (showProblems && protectedCents === null) || preview?.kind === 'protectedAboveCash',
-          message: preview?.kind === 'protectedAboveCash' ? 'Protected savings are part of your cash, so they cannot be more than it.' : AMOUNT_HELP,
-          hint: 'Part of your cash that you do not want to plan with. Nothing moves between bank accounts.',
+          message: preview?.kind === 'protectedAboveCash' ? 'Savings are part of your cash, so they cannot be more than it.' : AMOUNT_HELP,
+          hint: 'Part of your cash that is already set aside. The split below leaves it out. Nothing moves between bank accounts.',
         })}
         {amountField('Unpaid bills', billsText, setBillsText, {
           optional: true,
@@ -166,9 +174,55 @@ export function SetupScreen({ currency, today, onCurrencyChange, onCreate, accou
           {showProblems && !endDateEntered && <span className={formStyles.error}>Choose an end date.</span>}
         </label>
 
+        <SplitFields
+          texts={splitTexts}
+          onChange={(texts) => {
+            setSplitTexts(texts);
+            setShowProblems(false);
+          }}
+          hint="A common starting point, so change it to suit you. It applies to the cash you have not already saved, and to the money you choose to split later."
+        />
+
         {preview?.kind === 'ok' && (
           <>
-            <dl className={styles.sum}>
+            <section className={styles.sumGroup} aria-labelledby="setup-split-title">
+              <h2 id="setup-split-title" className={styles.sumTitle}>What your split comes to</h2>
+              <dl className={styles.sum}>
+              <dt>Savings share of your cash</dt>
+              <dd>
+                <Money cents={preview.savingsCents} currency={currency} />
+              </dd>
+              <dt>Wants share</dt>
+              <dd>
+                <Money cents={preview.wantsCents} currency={currency} />
+              </dd>
+              <dt>Needs share, which pays your bills first</dt>
+              <dd>
+                <Money cents={preview.needsCents} currency={currency} />
+              </dd>
+              </dl>
+            </section>
+
+            {preview.savingsCappedCents > 0 && (
+              <p className={styles.warning}>
+                Your bills leave room to set aside only <Money cents={preview.savingsCents} currency={currency} /> of the{' '}
+                <Money cents={preview.savingsCents + preview.savingsCappedCents} currency={currency} /> your split asks for.
+              </p>
+            )}
+            {preview.coveredElsewhereCents > 0 && preview.shortfallCents === 0 && (
+              <p className={styles.warning}>
+                Your bills are more than your needs share, so <Money cents={preview.coveredElsewhereCents} currency={currency} /> comes
+                out of your wants.
+              </p>
+            )}
+
+            <section className={styles.sumGroup} aria-labelledby="setup-week-title">
+              <h2 id="setup-week-title" className={styles.sumTitle}>Your first week</h2>
+              <dl className={styles.sum}>
+              <dt>Protected savings in total</dt>
+              <dd>
+                <Money cents={preview.protectedCents} currency={currency} />
+              </dd>
               <dt>Free cash after savings and bills</dt>
               <dd className={preview.freeCents < 0 ? styles.negative : ''}>
                 <Money cents={preview.freeCents} currency={currency} />
@@ -180,7 +234,12 @@ export function SetupScreen({ currency, today, onCurrencyChange, onCreate, accou
               <dd>
                 <Money cents={preview.suggestedCents} currency={currency} />
               </dd>
-            </dl>
+              <dt>Up to this much of it for wants</dt>
+              <dd>
+                <Money cents={Math.min(preview.wantsGuideCents, allowanceCents ?? preview.suggestedCents)} currency={currency} />
+              </dd>
+              </dl>
+            </section>
 
             {preview.shortfallCents > 0 && (
               <p className={styles.warning}>

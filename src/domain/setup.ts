@@ -6,6 +6,7 @@
 import { previewAllowanceChange } from './allowanceChange';
 import { freeCashCents, suggestAllowance } from './allowance';
 import { mondayOf, planDays, type IsoDate } from './dates';
+import { splitOpening, wantsLeft, weeklyWantsGuide, type Split, type SplitAmounts } from './split';
 
 export type SetupInput = {
   today: IsoDate;
@@ -46,6 +47,53 @@ export function previewSetup({ today, cashCents, protectedCents, commitmentsCent
     ...days,
     suggestedCents: suggestion.suggestedCents,
     shortfallCents: suggestion.shortfallCents,
+  };
+}
+
+export type SplitSetupPreview =
+  | (Extract<SetupPreview, { kind: 'ok' }> &
+      SplitAmounts & {
+        /** The savings already held plus the new savings share. */
+        protectedCents: number;
+        wantsLeftCents: number;
+        coveredElsewhereCents: number;
+        wantsGuideCents: number;
+      })
+  | Exclude<SetupPreview, { kind: 'ok' }>;
+
+/**
+ * Setup with a split. Savings the student already has stay out of it, and its
+ * savings share then counts as protected, so the allowance is worked out after it.
+ */
+export function previewSetupWithSplit({
+  today,
+  cashCents,
+  alreadySavedCents,
+  commitmentsCents,
+  planEndDate,
+  split,
+}: Omit<SetupInput, 'protectedCents'> & { alreadySavedCents: number; split: Split }): SplitSetupPreview {
+  if (alreadySavedCents > cashCents) return { kind: 'protectedAboveCash' };
+
+  const opening = splitOpening({ cashCents, alreadySavedCents, billsCents: commitmentsCents, split });
+  const preview = previewSetup({ today, cashCents, protectedCents: opening.protectedCents, commitmentsCents, planEndDate });
+  if (preview.kind !== 'ok') return preview;
+
+  const left = wantsLeft({
+    wantsPoolCents: opening.wantsCents,
+    wantsSpentCents: 0,
+    movedToSavingsCents: 0,
+    freeCents: preview.freeCents,
+  });
+  return {
+    ...preview,
+    ...opening,
+    ...left,
+    wantsGuideCents: weeklyWantsGuide({
+      wantsLeftCents: left.wantsLeftCents,
+      daysThisWeek: preview.daysThisWeek,
+      daysLeft: preview.daysLeft,
+    }),
   };
 }
 

@@ -7,6 +7,7 @@
 // allowance: new income prompts an explicit update, made separately if wanted.
 import { midweekSuggestion, type MidweekSuggestion } from './allowanceChange';
 import type { IsoDate } from './dates';
+import { splitMoneyIn, type Split, type SplitAmounts } from './split';
 
 /** Only a label: no future income is predicted or added from it. */
 export type IncomeKind = 'regular' | 'oneOff';
@@ -38,6 +39,7 @@ export type IncomePreview = {
 
 export function previewIncome({
   changeCents,
+  savingsChangeCents = 0,
   currentCashCents,
   freeCents,
   spentCents,
@@ -46,23 +48,52 @@ export function previewIncome({
 }: {
   /** The new entry's amount, or an edit's difference from the old amount. */
   changeCents: number;
+  /** How much more this saves as protected savings, which free cash does not get. */
+  savingsChangeCents?: number;
   currentCashCents: number;
   freeCents: number;
   spentCents: number;
   daysThisWeek: number;
   daysLeft: number;
 }): IncomePreview {
-  for (const [name, value] of Object.entries({ changeCents, currentCashCents, freeCents, spentCents })) {
+  for (const [name, value] of Object.entries({ changeCents, savingsChangeCents, currentCashCents, freeCents, spentCents })) {
     if (!Number.isSafeInteger(value)) {
       throw new RangeError(`${name} must be a whole number within the safe integer range (got ${value})`);
     }
   }
-  const after = { cashCents: currentCashCents + changeCents, freeCents: freeCents + changeCents };
+  const after = { cashCents: currentCashCents + changeCents, freeCents: freeCents + changeCents - savingsChangeCents };
   return {
     before: { cashCents: currentCashCents, freeCents },
     after,
     suggestion: midweekSuggestion({ spentCents, freeCents: after.freeCents, daysThisWeek, daysLeft }),
   };
+}
+
+/**
+ * A payment's shares under a split. An edit replaces the payment's old amount
+ * and savings, so those come out of free cash before the cap on savings is worked out.
+ */
+export function incomeShares({
+  cents,
+  split,
+  freeCents,
+  previous,
+}: {
+  cents: number;
+  split: Split;
+  /** F now, with the payment being edited still counted. May be negative. */
+  freeCents: number;
+  previous?: Pick<IncomeReceipt, 'cents' | 'savingsCents'>;
+}): SplitAmounts {
+  const freeAfterCents = freeCents + cents - (previous?.cents ?? 0) + (previous?.savingsCents ?? 0);
+  return splitMoneyIn({ cents, split, freeAfterCents });
+}
+
+/** The nearest whole percents to a saved payment's shares, to fill in the form when editing it. */
+export function splitFromShares({ cents, savingsCents = 0, wantsCents = 0 }: IncomeReceipt): Split {
+  const savingsPercent = Math.round((savingsCents * 100) / cents);
+  const wantsPercent = Math.min(Math.round((wantsCents * 100) / cents), 100 - savingsPercent);
+  return { needsPercent: 100 - savingsPercent - wantsPercent, wantsPercent, savingsPercent };
 }
 
 export function sumIncome(income: IncomeReceipt[]): number {

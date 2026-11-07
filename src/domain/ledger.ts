@@ -125,6 +125,8 @@ export type WeekAccount = {
   billPaymentsThisWeekCents: number;
   openingDate: IsoDate;
   planEndDate: IsoDate;
+  /** The default for new payments. Absent on an account made before splits. */
+  split: Split | undefined;
   recommendedAllowanceCents: number;
   chosenAllowanceCents: number;
   allowanceChanges: AllowanceChange[];
@@ -418,6 +420,7 @@ export function weekAccount(state: Ledger, currency: Currency): WeekAccount {
     billPaymentsThisWeekCents: billPaymentsCents(account.bills) - billPaymentsCents(account.bills, weekStart),
     openingDate: account.openingDate,
     planEndDate: account.planEndDate,
+    split: account.split,
     recommendedAllowanceCents: plan.recommendedCents,
     chosenAllowanceCents: currentAllowanceCents(plan.startingAllowanceCents, plan.changes),
     allowanceChanges: plan.changes,

@@ -23,6 +23,35 @@ export function isValidSplit({ needsPercent, wantsPercent, savingsPercent }: Spl
   );
 }
 
+/** A typed percent: a whole number from 0 to 100, or null if it is anything else. */
+export function parsePercent(text: string): number | null {
+  const trimmed = text.trim();
+  if (!/^\d{1,3}$/.test(trimmed)) return null;
+  const percent = Number(trimmed);
+  return percent <= 100 ? percent : null;
+}
+
+/** What is typed in the three percent boxes. */
+export type SplitTexts = { needs: string; wants: string; savings: string };
+
+export const SUGGESTED_SPLIT_TEXTS = splitToTexts(SUGGESTED_SPLIT);
+
+export function splitToTexts(split: Split): SplitTexts {
+  return { needs: String(split.needsPercent), wants: String(split.wantsPercent), savings: String(split.savingsPercent) };
+}
+
+/** A split only when all three are whole percents totalling 100. The total is null if any is not whole. */
+export function readSplitTexts(texts: SplitTexts): { split: Split | null; totalPercent: number | null } {
+  const needsPercent = parsePercent(texts.needs);
+  const wantsPercent = parsePercent(texts.wants);
+  const savingsPercent = parsePercent(texts.savings);
+  if (needsPercent === null || wantsPercent === null || savingsPercent === null) {
+    return { split: null, totalPercent: null };
+  }
+  const split = { needsPercent, wantsPercent, savingsPercent };
+  return { split: isValidSplit(split) ? split : null, totalPercent: needsPercent + wantsPercent + savingsPercent };
+}
+
 export type SplitAmounts = {
   savingsCents: number;
   wantsCents: number;

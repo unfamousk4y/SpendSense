@@ -4,6 +4,8 @@ import { freeCashCents, suggestAllowance } from './allowance';
 import {
   SUGGESTED_SPLIT,
   isValidSplit,
+  parsePercent,
+  readSplitTexts,
   splitMoneyIn,
   splitOpening,
   wantsLeft,
@@ -283,5 +285,38 @@ describe('allocateCashBySplit', () => {
     expect(
       allocateCashBySplit({ currentCashCents: 10000, protectedCents: 5000, commitmentsCents: 8000, wantsLeftCents: 0 }),
     ).toEqual({ kind: 'shortfall', shortfallCents: 3000 });
+  });
+});
+
+describe('parsePercent', () => {
+  test.each([
+    ['0', 0],
+    ['20', 20],
+    ['100', 100],
+    [' 50 ', 50],
+    ['007', 7],
+  ])('reads %s', (text, percent) => {
+    expect(parsePercent(text)).toBe(percent);
+  });
+
+  test.each(['', ' ', '101', '-5', '12.5', '1e2', 'abc', '20%', '1000'])('refuses "%s"', (text) => {
+    expect(parsePercent(text)).toBeNull();
+  });
+});
+
+describe('readSplitTexts', () => {
+  test('three whole percents totalling 100 make a split', () => {
+    expect(readSplitTexts({ needs: '60', wants: '30', savings: '10' })).toEqual({
+      split: { needsPercent: 60, wantsPercent: 30, savingsPercent: 10 },
+      totalPercent: 100,
+    });
+  });
+
+  test('a wrong total reports the total but makes no split', () => {
+    expect(readSplitTexts({ needs: '60', wants: '30', savings: '0' })).toEqual({ split: null, totalPercent: 90 });
+  });
+
+  test('anything not whole makes no split and no total', () => {
+    expect(readSplitTexts({ needs: '60', wants: '', savings: '40' })).toEqual({ split: null, totalPercent: null });
   });
 });

@@ -2,12 +2,15 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { SaveResult } from '../../data/ledgerStore';
 import { parseAmount, type AmountInvalidReason } from '../../domain/amount';
 import type { IsoDate } from '../../domain/dates';
-import { previewIncome, type IncomeReceipt } from '../../domain/income';
+import { incomeShares, previewIncome, splitFromShares, type IncomeKind, type IncomeReceipt } from '../../domain/income';
 import { formatCents, type Currency } from '../../domain/money';
+import { readSplitTexts, splitToTexts, type Split, type SplitTexts } from '../../domain/split';
 import { Money } from '../../ui/Money';
+import { SplitFields } from '../../ui/SplitFields';
 // Same sheet, title row, amount box and Save button as the other forms.
 import formStyles from './PurchaseDialog.module.css';
 import styles from './AdjustAllowanceDialog.module.css';
+import localStyles from './IncomeDialog.module.css';
 
 type IncomeDialogProps = {
   currency: Currency;
@@ -17,7 +20,10 @@ type IncomeDialogProps = {
   existing?: IncomeReceipt;
   /** What the student was saving when their session ended. Not saved yet. */
   restored?: IncomeReceipt;
+  /** The account's split, which a new payment starts from. Changing it here does not change the default. */
+  defaultSplit: Split;
   currentCashCents: number;
+  protectedCents: number;
   freeCents: number;
   spentCents: number;
   allowanceCents: number;
@@ -43,7 +49,9 @@ export function IncomeDialog({
   dates,
   existing,
   restored,
+  defaultSplit,
   currentCashCents,
+  protectedCents,
   freeCents,
   spentCents,
   allowanceCents,
@@ -60,6 +68,15 @@ export function IncomeDialog({
   const [amountText, setAmountText] = useState(start ? formatCents(start.cents) : '');
   const [source, setSource] = useState(start?.source ?? '');
   const [date, setDate] = useState(start && dates.some((option) => option.date === start.date) ? start.date : dates[0].date);
+  // A new payment asks which kind it is, so nothing is split without a choice.
+  const [kind, setKind] = useState<IncomeKind | null>(start ? (start.kind ?? 'oneOff') : null);
+  const startHasShares = start !== undefined && ((start.savingsCents ?? 0) > 0 || (start.wantsCents ?? 0) > 0);
+  const startWasSplit = startHasShares || start?.kind === 'regular';
+  const [splitOneOff, setSplitOneOff] = useState(startHasShares);
+  const [splitTexts, setSplitTexts] = useState<SplitTexts>(() =>
+    splitToTexts(startWasSplit ? splitFromShares(start!) : defaultSplit),
+  );
+  const [percentsEdited, setPercentsEdited] = useState(false);
   // Set only when Save is pressed, so half-typed text is not flagged early.
   const [showProblem, setShowProblem] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -84,10 +101,26 @@ export function IncomeDialog({
 
   // Worked out from the typed text on every render, never kept in state.
   const parsed = parseAmount(amountText);
+  const wantsSplit = kind === 'regular' || (kind === 'oneOff' && splitOneOff);
+  const { split } = readSplitTexts(splitTexts);
+  // The form starts from percents rounded to whole numbers. Until the amount or
+  // the percents change, the amounts the student confirmed stay exact.
+  const keepsStartAmounts = startWasSplit && start !== undefined && parsed.kind === 'ok' && parsed.cents === start.cents && !percentsEdited;
+  const shares =
+    parsed.kind === 'ok' && wantsSplit && split
+      ? incomeShares({ cents: parsed.cents, split, freeCents, previous: existing })
+      : null;
+  const savingsCents = !wantsSplit ? 0 : keepsStartAmounts ? (start.savingsCents ?? 0) : (shares?.savingsCents ?? 0);
+  const wantsCents = !wantsSplit ? 0 : keepsStartAmounts ? (start.wantsCents ?? 0) : (shares?.wantsCents ?? 0);
+  const savingsChangeCents = savingsCents - (existing?.savingsCents ?? 0);
+  // Savings from this payment may already have been released.
+  const savingsAlreadyUsed = protectedCents + savingsChangeCents < 0;
+  const deleteIsBlocked = existing !== undefined && (existing.savingsCents ?? 0) > protectedCents;
   const preview =
     parsed.kind === 'ok'
       ? previewIncome({
           changeCents: parsed.cents - (existing?.cents ?? 0),
+          savingsChangeCents,
           currentCashCents,
           freeCents,
           spentCents,
@@ -115,7 +148,22 @@ export function IncomeDialog({
       amountRef.current?.focus();
       return;
     }
-    void run(() => onSave({ id: entryId, date, cents: parsed.cents, ...(source.trim() && { source: source.trim() }) }));
+    if (kind === null || (wantsSplit && split === null) || savingsAlreadyUsed) {
+      setShowProblem(true);
+      return;
+    }
+    void run(() =>
+      onSave({
+        id: entryId,
+        date,
+        cents: parsed.cents,
+        ...(source.trim() && { source: source.trim() }),
+        // Left off when empty: an unsplit one-off is the plain entry it always was.
+        ...(kind === 'regular' && { kind }),
+        ...(savingsCents > 0 && { savingsCents }),
+        ...(wantsCents > 0 && { wantsCents }),
+      }),
+    );
   }
 
   return (
@@ -200,6 +248,103 @@ export function IncomeDialog({
           />
         </label>
 
+        <fieldset className={formStyles.group}>
+          <legend className={formStyles.label}>What kind of money is this?</legend>
+          <div className={formStyles.segmented}>
+            {(
+              [
+                ['regular', 'Regular payment'],
+                ['oneOff', 'One-off'],
+              ] as const
+            ).map(([option, label]) => (
+              <button
+                key={option}
+                type="button"
+                className={formStyles.segment}
+                aria-pressed={kind === option}
+                onClick={() => {
+                  setKind(option);
+                  setShowProblem(false);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {kind === null && showProblem && <span className={formStyles.error}>Choose regular payment or one-off.</span>}
+          {kind === null && !showProblem && <span className={styles.hint}>One-off means something like a gig or a gift.</span>}
+        </fieldset>
+
+        {kind === 'oneOff' && (
+          <fieldset className={formStyles.group}>
+            <legend className={formStyles.label}>Split this?</legend>
+            <div className={formStyles.segmented}>
+              {(
+                [
+                  [false, 'No'],
+                  [true, 'Yes'],
+                ] as const
+              ).map(([option, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  className={formStyles.segment}
+                  aria-pressed={splitOneOff === option}
+                  onClick={() => setSplitOneOff(option)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {!splitOneOff && <span className={styles.hint}>All of it stays as spending money. Nothing is set aside, and your wants stay the same.</span>}
+          </fieldset>
+        )}
+
+        {wantsSplit && (
+          <SplitFields
+            texts={splitTexts}
+            onChange={(texts) => {
+              setSplitTexts(texts);
+              setPercentsEdited(true);
+              setShowProblem(false);
+            }}
+            hint="Changing these only affects this payment. Your usual split stays the same."
+          />
+        )}
+
+        {wantsSplit && parsed.kind === 'ok' && split && (
+          <>
+            <h3 className={localStyles.sharesTitle}>What this payment comes to</h3>
+            <dl className={localStyles.shares}>
+              <dt>Savings</dt>
+              <dd>
+                <Money cents={savingsCents} currency={currency} />
+              </dd>
+              <dt>Wants</dt>
+              <dd>
+                <Money cents={wantsCents} currency={currency} />
+              </dd>
+              <dt>Needs</dt>
+              <dd>
+                <Money cents={parsed.cents - savingsCents - wantsCents} currency={currency} />
+              </dd>
+            </dl>
+            {!keepsStartAmounts && shares && shares.savingsCappedCents > 0 && (
+              <p className={localStyles.warning}>
+                You are short for your bills and savings, so only <Money cents={shares.savingsCents} currency={currency} /> of the{' '}
+                <Money cents={shares.savingsCents + shares.savingsCappedCents} currency={currency} /> can be set aside.
+              </p>
+            )}
+          </>
+        )}
+
+        {savingsAlreadyUsed && (
+          <p className={formStyles.error} role="alert">
+            You have already released some of the savings from this payment, so it needs to keep at least{' '}
+            <Money cents={(existing?.savingsCents ?? 0) - protectedCents} currency={currency} /> as savings.
+          </p>
+        )}
+
         {preview && (
           <>
             <table className={styles.preview}>
@@ -221,6 +366,17 @@ export function IncomeDialog({
                     <Money cents={preview.after.cashCents} currency={currency} />
                   </td>
                 </tr>
+                {savingsChangeCents !== 0 && (
+                  <tr>
+                    <th scope="row">Protected savings</th>
+                    <td>
+                      <Money cents={protectedCents} currency={currency} />
+                    </td>
+                    <td className={styles.changed}>
+                      <Money cents={protectedCents + savingsChangeCents} currency={currency} />
+                    </td>
+                  </tr>
+                )}
                 <tr>
                   <th scope="row">Free cash for the rest of the plan</th>
                   <td className={preview.before.freeCents < 0 ? styles.negative : ''}>
@@ -247,7 +403,9 @@ export function IncomeDialog({
 
         {existing && (
           <div className={formStyles.deleteArea}>
-            {confirmingDelete ? (
+            {deleteIsBlocked ? (
+              <p className={styles.hint}>This cannot be deleted because you have already released some of its savings.</p>
+            ) : confirmingDelete ? (
               <div className={formStyles.confirm} role="group" aria-labelledby="income-confirm-text">
                 <p id="income-confirm-text" className={formStyles.confirmText}>
                   Delete this income, <Money cents={existing.cents} currency={currency} />?

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { incomeShares, splitFromShares } from './income';
 import { demoLedger } from '../fixtures/demoWeek';
 import { addIncomeOnce, previewIncome, removeIncome, sumIncome, updateIncome, type IncomeReceipt } from './income';
 import { ledgerReducer, weekAccount, type Ledger, type LedgerAction } from './ledger';
@@ -136,5 +137,61 @@ describe('income in the ledger', () => {
     const deleted = run(closed, { type: 'deleteIncome', currency: 'USD', id: 'income-1' });
     expect(edited).toEqual(closed);
     expect(deleted).toEqual(closed);
+  });
+});
+
+describe('a payment with a split', () => {
+  const split = { needsPercent: 50, wantsPercent: 30, savingsPercent: 20 };
+
+  test('free cash rises only by what is not set aside', () => {
+    const preview = previewIncome({
+      changeCents: 10000,
+      savingsChangeCents: 2000,
+      currentCashCents: 96000,
+      freeCents: 56000,
+      spentCents: 4000,
+      daysThisWeek: 7,
+      daysLeft: 28,
+    });
+    expect(preview.after).toEqual({ cashCents: 106000, freeCents: 64000 });
+  });
+
+  test('a new payment: 20 saved, 30 wants, 50 needs', () => {
+    expect(incomeShares({ cents: 10000, split, freeCents: 56000 })).toEqual({
+      savingsCents: 2000,
+      wantsCents: 3000,
+      needsCents: 5000,
+      savingsCappedCents: 0,
+    });
+  });
+
+  test('short of money: savings stop at what free cash allows', () => {
+    // F is -80, so 100 in leaves 20 of room, not the 100 asked for.
+    expect(incomeShares({ cents: 10000, split: { needsPercent: 0, wantsPercent: 0, savingsPercent: 100 }, freeCents: -8000 })).toMatchObject({
+      savingsCents: 2000,
+      savingsCappedCents: 8000,
+    });
+  });
+
+  test('an edit takes the old amount and savings out before working out the cap', () => {
+    // F = 0 with a 100 payment that saved 20 still counted. Without that payment F = -80.
+    // Raised to 150, F before saving is 70, so the 30 asked for fits.
+    expect(incomeShares({ cents: 15000, split, freeCents: 0, previous: { cents: 10000, savingsCents: 2000 } })).toMatchObject({
+      savingsCents: 3000,
+      savingsCappedCents: 0,
+    });
+    // Lowered to 90, F before saving is 10, so savings stop at 10 instead of 18.
+    expect(incomeShares({ cents: 9000, split, freeCents: 0, previous: { cents: 10000, savingsCents: 2000 } })).toMatchObject({
+      savingsCents: 1000,
+      savingsCappedCents: 800,
+    });
+  });
+
+  test('splitFromShares fills the form with the nearest whole percents, totalling 100', () => {
+    const entry = { id: 'a', date: '2026-11-05', cents: 10000 };
+    expect(splitFromShares({ ...entry, savingsCents: 2000, wantsCents: 3000 })).toEqual(split);
+    expect(splitFromShares(entry)).toEqual({ needsPercent: 100, wantsPercent: 0, savingsPercent: 0 });
+    expect(splitFromShares({ ...entry, cents: 3, savingsCents: 1, wantsCents: 2 })).toEqual({ needsPercent: 0, wantsPercent: 67, savingsPercent: 33 });
+    expect(splitFromShares({ ...entry, cents: 7, savingsCents: 3, wantsCents: 4 })).toEqual({ needsPercent: 0, wantsPercent: 57, savingsPercent: 43 });
   });
 });

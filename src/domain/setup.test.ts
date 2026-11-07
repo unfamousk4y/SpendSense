@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { firstAllowanceFits, previewSetup } from './setup';
+import { firstAllowanceFits, previewSetup, previewSetupWithSplit } from './setup';
 
 // Hand-worked. 2026-11-02 is a Monday; 2026-11-29 is a Sunday.
 const worked = { cashCents: 100000, protectedCents: 20000, commitmentsCents: 20000, planEndDate: '2026-11-29' };
@@ -65,5 +65,68 @@ describe('firstAllowanceFits', () => {
 describe('previewSetup while a year is being typed', () => {
   test.each(['0002-11-29', '0020-11-29', '0202-11-29'])('%s counts as a past date', (planEndDate) => {
     expect(previewSetup({ ...worked, today: '2026-11-04', planEndDate })).toEqual({ kind: 'planEndPassed' });
+  });
+});
+
+// The worked example from PRODUCT_PLAN.md: 28 days from a Monday through a Sunday.
+const withSplit = {
+  today: '2026-11-02',
+  cashCents: 100000,
+  alreadySavedCents: 40000,
+  commitmentsCents: 15000,
+  planEndDate: '2026-11-29',
+  split: { needsPercent: 50, wantsPercent: 30, savingsPercent: 20 },
+};
+
+describe('previewSetupWithSplit', () => {
+  test('worked example: 120 more saved, 330 free, 82.50 a week with 45.00 for wants', () => {
+    expect(previewSetupWithSplit(withSplit)).toMatchObject({
+      kind: 'ok',
+      savingsCents: 12000,
+      wantsCents: 18000,
+      needsCents: 30000,
+      protectedCents: 52000,
+      freeCents: 33000,
+      suggestedCents: 8250,
+      wantsLeftCents: 18000,
+      coveredElsewhereCents: 0,
+      wantsGuideCents: 4500,
+    });
+  });
+
+  test('0% savings keeps only what was already saved', () => {
+    expect(previewSetupWithSplit({ ...withSplit, split: { needsPercent: 70, wantsPercent: 30, savingsPercent: 0 } })).toMatchObject({
+      savingsCents: 0,
+      protectedCents: 40000,
+      freeCents: 45000,
+    });
+  });
+
+  test('bills past the needs share come out of wants', () => {
+    // 1,000 cash, nothing saved, 600 of bills: savings 200, wants 300, F = 200.
+    expect(previewSetupWithSplit({ ...withSplit, alreadySavedCents: 0, commitmentsCents: 60000 })).toMatchObject({
+      freeCents: 20000,
+      wantsLeftCents: 20000,
+      coveredElsewhereCents: 10000,
+      wantsGuideCents: 5000,
+    });
+  });
+
+  test('bills above the cash: no new savings, no wants, and the shortfall is reported', () => {
+    expect(previewSetupWithSplit({ ...withSplit, alreadySavedCents: 0, commitmentsCents: 120000 })).toMatchObject({
+      savingsCents: 0,
+      savingsCappedCents: 20000,
+      protectedCents: 0,
+      freeCents: -20000,
+      shortfallCents: 20000,
+      suggestedCents: 0,
+      wantsLeftCents: 0,
+      wantsGuideCents: 0,
+    });
+  });
+
+  test('savings above the cash and a plan end in the past are reported', () => {
+    expect(previewSetupWithSplit({ ...withSplit, alreadySavedCents: 100001 })).toEqual({ kind: 'protectedAboveCash' });
+    expect(previewSetupWithSplit({ ...withSplit, planEndDate: '2026-11-01' })).toEqual({ kind: 'planEndPassed' });
   });
 });

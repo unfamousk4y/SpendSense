@@ -68,6 +68,12 @@
   border: 0;
 }
 
+/* A fieldset's legend sits outside its grid, so the gap above does not reach it. */
+.group > legend {
+  margin-bottom: 6px;
+  padding: 0;
+}
+
 .label {
   padding: 0;
   font-size: 0.875rem;

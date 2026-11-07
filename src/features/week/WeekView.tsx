@@ -29,6 +29,7 @@ import { UndoCorrectionDialog } from './UndoCorrectionDialog';
 import { NewPlanDialog } from './NewPlanDialog';
 import { PayBillDialog } from './PayBillDialog';
 import { moneyFlow } from '../../domain/moneyFlow';
+import { SUGGESTED_SPLIT } from '../../domain/split';
 import { canStartNewPlan } from '../../domain/newPlan';
 import { CashPanel } from './CashPanel';
 import { MoneyFlow } from './MoneyFlow';
@@ -927,7 +928,9 @@ export function WeekView({
           dates={entryDates}
           existing={dialog.mode === 'editIncome' ? dialog.income : undefined}
           restored={dialog.restored}
+          defaultSplit={account.split ?? SUGGESTED_SPLIT}
           currentCashCents={currentCashCents}
+          protectedCents={account.protectedCents}
           freeCents={freeCents}
           spentCents={summary.spentCents}
           allowanceCents={account.chosenAllowanceCents}
