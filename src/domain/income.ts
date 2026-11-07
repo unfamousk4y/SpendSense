@@ -2,11 +2,14 @@
 // income changes C exactly once" and "Expected income is not spendable until
 // recorded as received". Pure: all money is integer cents in ONE currency.
 //
-// Income raises cash C and free cash F by the same amount. It never changes
-// protected savings, bills or this week's allowance: new income prompts an
-// explicit update, which the student makes separately if they want to.
+// Income raises cash C. Any savings share the student confirmed goes to protected
+// savings, and the rest raises free cash F. It never changes bills or this week's
+// allowance: new income prompts an explicit update, made separately if wanted.
 import { midweekSuggestion, type MidweekSuggestion } from './allowanceChange';
 import type { IsoDate } from './dates';
+
+/** Only a label: no future income is predicted or added from it. */
+export type IncomeKind = 'regular' | 'oneOff';
 
 export type IncomeReceipt = {
   /** One per opening of the form, so a repeated save is the same entry. */
@@ -16,6 +19,12 @@ export type IncomeReceipt = {
   cents: number;
   /** Where it came from, such as Aid or Family. */
   source?: string;
+  /** Absent means one-off. */
+  kind?: IncomeKind;
+  /** The part set aside as protected savings, as confirmed. Absent when not split. */
+  savingsCents?: number;
+  /** The part added to the wants pool, as confirmed. Absent when not split. */
+  wantsCents?: number;
 };
 
 export type IncomeSide = { cashCents: number; freeCents: number };
@@ -58,6 +67,21 @@ export function previewIncome({
 
 export function sumIncome(income: IncomeReceipt[]): number {
   return income.reduce((total, receipt) => total + receipt.cents, 0);
+}
+
+export function sumIncomeSavings(income: IncomeReceipt[]): number {
+  return income.reduce((total, receipt) => total + (receipt.savingsCents ?? 0), 0);
+}
+
+/** Whether a receipt's confirmed shares are whole cents that fit inside its amount. */
+export function incomeSharesFit({ cents, savingsCents = 0, wantsCents = 0 }: IncomeReceipt): boolean {
+  return (
+    Number.isSafeInteger(savingsCents) &&
+    Number.isSafeInteger(wantsCents) &&
+    savingsCents >= 0 &&
+    wantsCents >= 0 &&
+    savingsCents + wantsCents <= cents
+  );
 }
 
 /** Appends an entry unless one with the same id is already recorded. */

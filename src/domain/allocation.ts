@@ -50,6 +50,53 @@ export function allocateCash({
   };
 }
 
+export type SplitAllocationKey = 'protected' | 'bills' | 'needs' | 'wants';
+
+export type SplitAllocationSegment = {
+  key: SplitAllocationKey;
+  cents: number;
+  /** Whole percent of current cash; all four always sum to exactly 100 (or all 0). */
+  percent: number;
+};
+
+export type SplitCashAllocation =
+  | { kind: 'ok'; totalCents: number; segments: SplitAllocationSegment[] }
+  | { kind: 'shortfall'; shortfallCents: number };
+
+/** The same cash, seen through the student's split: C = protected + bills + needs + wants. */
+export function allocateCashBySplit({
+  currentCashCents,
+  protectedCents,
+  commitmentsCents,
+  wantsLeftCents,
+}: {
+  currentCashCents: number;
+  protectedCents: number;
+  commitmentsCents: number;
+  /** From wantsLeft in split.ts. */
+  wantsLeftCents: number;
+}): SplitCashAllocation {
+  const freeCents = currentCashCents - protectedCents - commitmentsCents;
+  if (freeCents < 0) {
+    return { kind: 'shortfall', shortfallCents: -freeCents };
+  }
+
+  const wantsCents = Math.min(Math.max(wantsLeftCents, 0), freeCents);
+  const parts: [SplitAllocationKey, number][] = [
+    ['protected', protectedCents],
+    ['bills', commitmentsCents],
+    ['needs', freeCents - wantsCents],
+    ['wants', wantsCents],
+  ];
+
+  const percents = wholePercentsSummingTo100(parts.map(([, cents]) => cents), currentCashCents);
+  return {
+    kind: 'ok',
+    totalCents: currentCashCents,
+    segments: parts.map(([key, cents], i) => ({ key, cents, percent: percents[i] })),
+  };
+}
+
 /**
  * Rounding each share separately can show 33% + 33% + 33% = 99%. Instead round
  * every share down, then give the missing points to the shares that lost the

@@ -13,13 +13,13 @@ import { fileURLToPath } from 'node:url';
 
 // Parents before the rows that point at them. Ownership is never read from the file.
 const COLUMNS = {
-  accounts: ['id', 'currency', 'opening_date', 'opening_cash_cents', 'opening_protected_cents', 'plan_end_date', 'created_at'],
-  week_plans: ['id', 'account_id', 'week_start', 'recommended_cents', 'starting_allowance_cents', 'created_at'],
+  accounts: ['id', 'currency', 'opening_date', 'opening_cash_cents', 'opening_protected_cents', 'plan_end_date', 'needs_percent', 'wants_percent', 'savings_percent', 'opening_wants_cents', 'created_at'],
+  week_plans: ['id', 'account_id', 'week_start', 'recommended_cents', 'starting_allowance_cents', 'wants_guide_cents', 'created_at'],
   allowance_changes: ['id', 'week_plan_id', 'made_on', 'from_cents', 'to_cents', 'suggested_cents', 'created_at'],
   week_closures: ['id', 'account_id', 'week_start', 'allowance_cents', 'spent_cents', 'leftover_cents', 'protected_cents', 'created_at'],
   savings_releases: ['id', 'account_id', 'made_on', 'cents', 'created_at'],
   purchases: ['id', 'account_id', 'date', 'merchant', 'note', 'category', 'need_or_want', 'cents', 'created_at'],
-  income_receipts: ['id', 'account_id', 'received_on', 'source', 'cents', 'created_at'],
+  income_receipts: ['id', 'account_id', 'received_on', 'source', 'cents', 'income_kind', 'savings_cents', 'wants_cents', 'created_at'],
   balance_corrections: ['id', 'account_id', 'corrected_on', 'difference_cents', 'note', 'created_at'],
   bills: ['id', 'account_id', 'name', 'due_on', 'cents', 'paid_on', 'paid_cents', 'created_at'],
 };

@@ -97,6 +97,27 @@ Browser: onboarding to first purchase; edit/delete; switch USD/BSD; formula expl
 
 Before real beta use: verify authentication and ownership, explain manual-entry freshness, support data export/deletion, obtain deployment approval, and document what is not supported. If any gate fails, use a guided fictional-data prototype and extend the schedule.
 
+## Amendment: the money split (approved by the owner, 2026-11-06)
+
+Problem: the suggested allowance spreads all free cash across the plan, so it budgets the student's money down to zero. The student now chooses how money coming in is divided between needs, wants and savings.
+
+- Decision: one weekly allowance, with a suggested wants portion inside it. Alternative: separate needs and wants budgets with their own limits and closure rules, about twice the work and more database risk. Revisit if beta students ask for firmer limits.
+- The suggested split is 50% needs, 30% wants, 20% savings, labelled as a common starting point. Whole percents from 0 to 100 that total 100. Each account has its own split, so currencies stay separate. It is not investment advice, and it moves no money.
+- The split applies to money coming in, never to the current balance, because a percentage of the balance would shrink savings as the student spends. At setup it applies only to cash not already saved.
+- Regular income shows the split to confirm or edit. A one-off asks whether to split it and starts on No. Unsplit money raises cash but not savings or the wants pool. "Regular" is only a label: no future income is predicted or added.
+- A payment can use different percentages without changing the default. Its confirmed amounts are stored on its own row, so changing the default never rewrites earlier payments, and a retry cannot save a payment without its split.
+- Rounding: savings and wants round down, and the spare cents go to needs.
+- P = opening + closures + confirmed income savings - releases. F = C - P - B is unchanged.
+- The savings share is capped at the free cash available, so setting money aside cannot deepen a shortfall.
+- Bills come out of the needs share. If they exceed it, the extra comes out of wants and the screen says so: wants left = min(max(0, F), max(0, wants pool - wants spending - unused wants moved to savings)).
+- Weekly wants guide = floor(wants left * d / D), saved with the week's plan and never above the allowance in force. Going over it is shown plainly, in words and in red. It is not a hard limit.
+- At closure, unused wants money moves to savings with the other leftovers, and stops counting toward future wants: moved = min(protected by the closure, max(0, guide - wants spending that week)).
+- Need or Want becomes a required tap on a purchase, since untagged purchases would make the guide unreliable. The database enforces it too, with a check on new and edited rows, in a separate migration applied alongside the form change.
+- The donut shows savings, bills, needs left and wants left, and still adds up to current cash.
+- Editing or deleting income must never take protected savings below zero, including after a release. The database has to refuse it.
+
+Worked example: cash 1,000, of which 400 is already saved, a 150 bill and 28 days left. The split applies to 600: savings 120 (P = 520), wants 180, needs 300. F = 330, allowance 82.50, wants guide 45.00, other needs 37.50 a week. Donut: 520 + 150 + 150 + 180 = 1,000.
+
 ## CSV follow-up
 
 Select a real export format with sensitive fields removed; implement column mapping, date/decimal parsing, currency/account selection, preview and explicit confirmation. Detect repeated imports using file/batch identity and reviewed transaction matches; do not blindly deduplicate identical date/merchant/amount because two real purchases may match. Imports before the opening-balance effective date must not reduce that balance again. Retain import provenance and a reversible batch operation. Discard raw files after local parsing unless there is an approved need to retain them.

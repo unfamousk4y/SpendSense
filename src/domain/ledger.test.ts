@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { demoLedger } from '../fixtures/demoWeek';
-import { hasEndedWeekToClose, ledgerReducer, planForNewWeek, weekAccount, type Ledger, type LedgerAction } from './ledger';
+import { accountCash, hasEndedWeekToClose, ledgerReducer, planForNewWeek, weekAccount, type Ledger, type LedgerAction } from './ledger';
 
 // Expected values worked out by hand. The demo starts Thu Nov 5 in the week of
 // Nov 2 with USD 1,000 opening cash, 200 protected, 200 bills, allowance 150,
@@ -260,5 +260,78 @@ describe('hasEndedWeekToClose', () => {
   test('not once that week has a closure', () => {
     const closed = run(demoLedger, ...toMonday).accounts.USD!;
     expect(hasEndedWeekToClose(closed, '2026-11-09')).toBe(false);
+  });
+});
+
+// The demo's USD account on Thu Nov 5: cash 960, protected 200, bills 200, so F = 560.
+describe('ledger: income with a confirmed split', () => {
+  const splitPayment = { id: 'pay-1', date: '2026-11-05', cents: 10000, savingsCents: 2000, wantsCents: 3000 };
+  const add = (income = splitPayment): LedgerAction => ({ type: 'addIncome', currency: 'USD', income });
+  const release = (cents: number): LedgerAction => ({
+    type: 'releaseSavings',
+    currency: 'USD',
+    release: { id: 'rel-1', madeOn: '2026-11-05', cents },
+  });
+
+  test('the savings share is protected: P 200 -> 220, and F rises only by the other 80', () => {
+    const after = run(demoLedger, add());
+    expect(weekAccount(after, 'USD').protectedCents).toBe(22000);
+    // F = 1,060 - 220 - 200 = 640, up 80 from 560.
+    expect(accountCash(after.accounts.USD!)).toEqual({ currentCashCents: 106000, protectedCents: 22000 });
+  });
+
+  test('a payment with no split protects nothing, as before', () => {
+    const after = run(demoLedger, add({ id: 'pay-2', date: '2026-11-05', cents: 10000 } as typeof splitPayment));
+    expect(weekAccount(after, 'USD').protectedCents).toBe(20000);
+  });
+
+  test('a double tap records the payment and its savings once', () => {
+    const after = run(demoLedger, add(), add());
+    expect(after.accounts.USD!.income).toHaveLength(1);
+    expect(weekAccount(after, 'USD').protectedCents).toBe(22000);
+  });
+
+  test('deleting the payment takes its savings with it', () => {
+    const after = run(demoLedger, add(), { type: 'deleteIncome', currency: 'USD', id: 'pay-1' });
+    expect(weekAccount(after, 'USD').protectedCents).toBe(20000);
+  });
+
+  test('deleting is refused once its savings have been released', () => {
+    const released = run(demoLedger, add(), release(22000));
+    expect(weekAccount(released, 'USD').protectedCents).toBe(0);
+    const after = run(released, { type: 'deleteIncome', currency: 'USD', id: 'pay-1' });
+    expect(after).toBe(released);
+  });
+
+  test('lowering the savings share is refused once it has been released', () => {
+    const released = run(demoLedger, add(), release(22000));
+    const after = run(released, { type: 'updateIncome', currency: 'USD', income: { ...splitPayment, savingsCents: 1000 } });
+    expect(after).toBe(released);
+  });
+
+  test('editing the source of a released payment still works', () => {
+    const released = run(demoLedger, add(), release(22000));
+    const after = run(released, { type: 'updateIncome', currency: 'USD', income: { ...splitPayment, source: 'Tutoring' } });
+    expect(after.accounts.USD!.income[0].source).toBe('Tutoring');
+  });
+
+  test.each([
+    ['shares larger than the payment', { savingsCents: 8000, wantsCents: 3000 }],
+    ['a negative share', { savingsCents: -1, wantsCents: 0 }],
+    ['a fraction of a cent', { savingsCents: 0.5, wantsCents: 0 }],
+  ])('refuses %s', (_name, shares) => {
+    expect(run(demoLedger, add({ ...splitPayment, ...shares }))).toBe(demoLedger);
+  });
+
+  test('setting money aside that would deepen a shortfall is refused', () => {
+    // A 700 bill makes F = 960 - 200 - 900 = -140. The 100 payment still leaves it at -40.
+    const short = run(demoLedger, {
+      type: 'addBill',
+      currency: 'USD',
+      bill: { id: 'big-bill', name: 'Tuition', dueOn: '2026-11-20', cents: 70000 },
+    });
+    expect(run(short, add())).toBe(short);
+    const unsaved = run(short, add({ ...splitPayment, savingsCents: 0 }));
+    expect(unsaved.accounts.USD!.income).toHaveLength(1);
   });
 });

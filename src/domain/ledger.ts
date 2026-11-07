@@ -25,10 +25,19 @@ import {
 import { closeWeek, type WeekClosure } from './closure';
 import { addCorrectionOnce, removeCorrection, sumCorrections, type BalanceCorrection } from './correction';
 import { addDays, mondayOf, planDays, type IsoDate } from './dates';
-import { addIncomeOnce, removeIncome, sumIncome, updateIncome, type IncomeReceipt } from './income';
+import {
+  addIncomeOnce,
+  incomeSharesFit,
+  removeIncome,
+  sumIncome,
+  sumIncomeSavings,
+  updateIncome,
+  type IncomeReceipt,
+} from './income';
 import type { Currency } from './money';
 import { canStartNewPlan } from './newPlan';
 import { previewRelease, recordRelease, type SavingsRelease } from './release';
+import type { Split } from './split';
 import { addPurchaseOnce, removePurchase, updatePurchase, type Purchase } from './week';
 
 /** The allowance snapshot for one week, plus any explained changes to it. */
@@ -38,6 +47,8 @@ export type WeekPlan = {
   recommendedCents: number;
   /** The allowance chosen when the week started. */
   startingAllowanceCents: number;
+  /** This week's share of what is left for wants. Absent until the week screen saves one. */
+  wantsGuideCents?: number;
   /** Midweek changes, oldest first. The latest one is in force. */
   changes: AllowanceChange[];
 };
@@ -53,6 +64,10 @@ export type AccountLedger = {
   openingCashCents: number;
   /** P on the opening date. Closures add to it. */
   openingProtectedCents: number;
+  /** The default for new payments. Absent until setup saves one. */
+  split?: Split;
+  /** The wants share of the opening cash. Absent until setup saves one. */
+  openingWantsCents?: number;
   planEndDate: IsoDate;
   /** Every bill, paid or not. B is worked out from these. */
   bills: Bill[];
@@ -161,10 +176,11 @@ export function ledgerReducer(state: Ledger, action: LedgerAction): Ledger {
       const existing = state.accounts[action.currency];
       // Only money already received, in the open week. Closed weeks are never edited.
       if (!existing || !isOpenDate(state, existing, action.income.date)) return state;
-      return changeAccount(state, action.currency, (account) => ({
-        ...account,
-        income: addIncomeOnce(account.income, action.income),
-      }));
+      const income = addIncomeOnce(existing.income, action.income);
+      // Already recorded (a double tap): nothing to check or change.
+      if (income === existing.income) return state;
+      if (!incomeChangeFits(existing, income, undefined, action.income)) return state;
+      return changeAccount(state, action.currency, (account) => ({ ...account, income }));
     }
 
     case 'updateIncome': {
@@ -172,20 +188,18 @@ export function ledgerReducer(state: Ledger, action: LedgerAction): Ledger {
       const original = existing?.income.find((receipt) => receipt.id === action.income.id);
       if (!existing || !original) return state;
       if (!isOpenDate(state, existing, original.date) || !isOpenDate(state, existing, action.income.date)) return state;
-      return changeAccount(state, action.currency, (account) => ({
-        ...account,
-        income: updateIncome(account.income, action.income),
-      }));
+      const income = updateIncome(existing.income, action.income);
+      if (!incomeChangeFits(existing, income, original, action.income)) return state;
+      return changeAccount(state, action.currency, (account) => ({ ...account, income }));
     }
 
     case 'deleteIncome': {
       const existing = state.accounts[action.currency];
       const original = existing?.income.find((receipt) => receipt.id === action.id);
       if (!existing || !original || !isOpenDate(state, existing, original.date)) return state;
-      return changeAccount(state, action.currency, (account) => ({
-        ...account,
-        income: removeIncome(account.income, action.id),
-      }));
+      const income = removeIncome(existing.income, action.id);
+      if (!incomeChangeFits(existing, income, original, undefined)) return state;
+      return changeAccount(state, action.currency, (account) => ({ ...account, income }));
     }
 
     case 'addCorrection': {
@@ -466,6 +480,24 @@ function changeAccount(state: Ledger, currency: Currency, change: (account: Acco
   return { ...state, accounts: { ...state.accounts, [currency]: change(account) } };
 }
 
+/**
+ * Checked here too, not only in the form. Protected savings can never go below
+ * zero, which editing income could do after its savings were released, and
+ * setting more aside can never deepen a shortfall.
+ */
+function incomeChangeFits(
+  account: AccountLedger,
+  income: IncomeReceipt[],
+  before: IncomeReceipt | undefined,
+  after: IncomeReceipt | undefined,
+): boolean {
+  if (after && !incomeSharesFit(after)) return false;
+  const parts = cashParts({ ...account, income }, account.closures);
+  if (parts.protectedCents < 0) return false;
+  const savingsGrew = (after?.savingsCents ?? 0) > (before?.savingsCents ?? 0);
+  return !savingsGrew || freeCashCents(parts) >= 0;
+}
+
 function cashParts(account: AccountLedger, closures: WeekClosure[]) {
   return {
     // Everything recorded is dated today or earlier, so this is current cash.
@@ -489,7 +521,7 @@ export function accountCash(account: AccountLedger): { currentCashCents: number;
 function protectedCents(account: AccountLedger, closures: WeekClosure[]): number {
   const protectedByClosures = closures.reduce((total, closure) => total + closure.protectedCents, 0);
   const released = account.releases.reduce((total, release) => total + release.cents, 0);
-  return account.openingProtectedCents + protectedByClosures - released;
+  return account.openingProtectedCents + protectedByClosures + sumIncomeSavings(account.income) - released;
 }
 
 function spentIn(account: AccountLedger, weekStart: IsoDate): number {

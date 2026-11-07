@@ -12,10 +12,11 @@ import type { CategoryId, NeedOrWant } from '../domain/categories';
 import type { WeekClosure } from '../domain/closure';
 import type { BalanceCorrection } from '../domain/correction';
 import type { IsoDate } from '../domain/dates';
-import type { IncomeReceipt } from '../domain/income';
+import type { IncomeKind, IncomeReceipt } from '../domain/income';
 import { hasEndedWeekToClose, planForNewWeek, type AccountLedger, type Ledger, type WeekPlan } from '../domain/ledger';
 import type { Currency } from '../domain/money';
 import type { SavingsRelease } from '../domain/release';
+import type { Split } from '../domain/split';
 import type { Purchase } from '../domain/week';
 
 export type SaveResult = { ok: true } | { ok: false; message: string };
@@ -43,6 +44,10 @@ export type NewAccount = {
   planEndDate: IsoDate;
   recommendedCents: number;
   allowanceCents: number;
+  /** Without these the database uses the suggested split, with no wants yet. */
+  split?: Split;
+  openingWantsCents?: number;
+  wantsGuideCents?: number;
 };
 
 const UNIQUE_VIOLATION = '23505';
@@ -74,6 +79,10 @@ function saveMessage(error: PostgrestError): string {
       return 'A correction can only be dated today or earlier.';
     case 'SS006':
       return 'Your plan is still running. Reload the page to see the latest.';
+    case 'SS009':
+      return 'Some of the savings from this payment have already been released, so it cannot be changed that way. Reload the page to see the latest.';
+    case 'SS010':
+      return 'Setting this aside would leave you short of money for your bills and savings. Reload the page to see the latest.';
     default:
       return SAVE_FAILED;
   }
@@ -248,6 +257,13 @@ export async function createAccount(client: SupabaseClient, account: NewAccount)
     p_plan_end_date: account.planEndDate,
     p_recommended_cents: account.recommendedCents,
     p_starting_allowance_cents: account.allowanceCents,
+    ...(account.split && {
+      p_needs_percent: account.split.needsPercent,
+      p_wants_percent: account.split.wantsPercent,
+      p_savings_percent: account.split.savingsPercent,
+    }),
+    ...(account.openingWantsCents !== undefined && { p_opening_wants_cents: account.openingWantsCents }),
+    ...(account.wantsGuideCents !== undefined && { p_wants_guide_cents: account.wantsGuideCents }),
   });
   // Already there (a double tap, or a reply lost on the way back): one
   // account per currency is a database rule, so this retry changed nothing.
@@ -343,7 +359,7 @@ export async function startNewPlan(
   accountId: string,
   today: IsoDate,
   endDate: IsoDate,
-  week?: { recommendedCents: number; allowanceCents: number },
+  week?: { recommendedCents: number; allowanceCents: number; wantsGuideCents?: number },
 ): Promise<SaveResult> {
   const { error } = await client.rpc('start_new_plan', {
     p_account_id: accountId,
@@ -351,8 +367,20 @@ export async function startNewPlan(
     p_end_date: endDate,
     p_recommended_cents: week?.recommendedCents ?? null,
     p_starting_allowance_cents: week?.allowanceCents ?? null,
+    p_wants_guide_cents: week?.wantsGuideCents ?? 0,
   });
   return error ? { ok: false, message: saveMessage(error) } : { ok: true };
+}
+
+/** Changes the default for new payments. Earlier payments keep their own amounts. */
+export async function updateSplit(client: SupabaseClient, accountId: string, split: Split): Promise<SaveResult> {
+  const { data, error } = await client
+    .from('accounts')
+    .update({ needs_percent: split.needsPercent, wants_percent: split.wantsPercent, savings_percent: split.savingsPercent })
+    .eq('id', accountId)
+    .select('id');
+  if (error) return { ok: false, message: saveMessage(error) };
+  return data.length === 1 ? { ok: true } : { ok: false, message: SAVE_FAILED };
 }
 
 export async function updatePurchaseRow(client: SupabaseClient, purchase: Purchase): Promise<SaveResult> {
@@ -431,6 +459,9 @@ function incomeColumns(income: IncomeReceipt) {
     // null, not undefined: clearing the source on an edit must clear it in the row.
     source: income.source ?? null,
     cents: income.cents,
+    income_kind: income.kind ?? 'oneOff',
+    savings_cents: income.savingsCents ?? 0,
+    wants_cents: income.wantsCents ?? 0,
   };
 }
 
@@ -455,6 +486,8 @@ function toAccount(row: any, parts: Pick<AccountLedger, 'purchases' | 'income' |
     openingDate: row.opening_date,
     openingCashCents: row.opening_cash_cents,
     openingProtectedCents: row.opening_protected_cents,
+    split: { needsPercent: row.needs_percent, wantsPercent: row.wants_percent, savingsPercent: row.savings_percent },
+    openingWantsCents: row.opening_wants_cents,
     planEndDate: row.plan_end_date,
     ...parts,
   };
@@ -478,6 +511,10 @@ function toIncome(row: any): IncomeReceipt {
     date: row.received_on,
     cents: row.cents,
     ...(row.source !== null && { source: row.source as string }),
+    // Left off when empty: an unsplit one-off reads back exactly as it was saved.
+    ...(row.income_kind === 'regular' && { kind: row.income_kind as IncomeKind }),
+    ...(row.savings_cents > 0 && { savingsCents: row.savings_cents as number }),
+    ...(row.wants_cents > 0 && { wantsCents: row.wants_cents as number }),
   };
 }
 
@@ -505,6 +542,7 @@ function toWeekPlan(row: any, changes: any[]): WeekPlan {
     weekStart: row.week_start,
     recommendedCents: row.recommended_cents,
     startingAllowanceCents: row.starting_allowance_cents,
+    wantsGuideCents: row.wants_guide_cents,
     changes: changes.filter((change) => change.week_plan_id === row.id).map(toAllowanceChange),
   };
 }
