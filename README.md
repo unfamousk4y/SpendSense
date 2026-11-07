@@ -4,7 +4,7 @@ A phone-first spending tracker for students whose income doesn't show up on a re
 
 Most budgeting apps assume a steady paycheck. SpendSense asks a smaller question: based on the money you actually have right now, how much can you spend this week? You log a purchase and that number updates.
 
-It's still in development. It isn't deployed yet, and the first test will be a small guided beta with two or three students.
+It's up as an invite-only beta, and the first test will be a small guided one with two or three students.
 
 ![The week screen in dark mode, showing weekly remaining, cash, savings, bills and a spending chart](docs/screenshots/dashboard-dark.jpg)
 
@@ -16,7 +16,9 @@ All the numbers in these screenshots come from the built-in fictional demo.
 
 ## What it does
 
+- Splits the money coming in between needs, wants and savings. It suggests 50/30/20 and you can change it
 - Works out a weekly allowance from your cash, savings, unpaid bills and how long until your plan ends
+- Shows how much of that allowance is for wants, and tells you when you go over. It's a guide, so nothing gets blocked
 - Lets you change that allowance, and shows what the change does to the rest of your plan
 - Tracks spending, income and dated bills, including paying part of a bill
 - Keeps USD and BSD as separate accounts. It never adds them together or converts between them
@@ -32,7 +34,7 @@ No bank connections, payments, CSV import, currency transfers, debt tracking or 
 
 ## Stack
 
-React 19, TypeScript and Vite on the front end, with CSS Modules for styling and Motion for animation. Supabase handles the Postgres database and Google sign-in. Tests run on Vitest.
+React 19, TypeScript and Vite on the front end, with CSS Modules for styling and Motion for animation. Supabase handles the Postgres database and Google sign-in, and Cloudflare Pages hosts the site. Tests run on Vitest.
 
 I went with Vite over Next.js because there's no need for server rendering or SEO here.
 
@@ -95,4 +97,4 @@ I built this with Claude Code as a way to get better at the fundamentals: state,
 
 ## Status
 
-Next up is setting up a separate project for the beta and deploying it. After that, CSV import if the beta shows people actually keep using it.
+The beta is live and sign-up is limited to an invite list. Next up is testing it with two or three students. After that, CSV import if the beta shows people actually keep using it.
