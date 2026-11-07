@@ -98,3 +98,7 @@ I built this with Claude Code as a way to get better at the fundamentals: state,
 ## Status
 
 The beta is live and sign-up is limited to an invite list. Next up is testing it with two or three students. After that, CSV import if the beta shows people actually keep using it.
+
+## License
+
+All rights reserved. The code is here so you can read and review it, and you're welcome to run it locally to try it out. You can't reuse, deploy or share it without my permission. See [LICENSE](LICENSE) for the details.
